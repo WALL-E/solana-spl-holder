@@ -202,9 +202,34 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 				CreatedAt:      time.Now(),
 				UpdatedAt:      time.Now(),
 			},
+			{
+				ID:             2,
+				MintAddress:    "test_mint_address_2",
+				Pubkey:         "test_pubkey_2",
+				Lamports:       2039280,
+				IsNative:       false,
+				Owner:          "test_owner_2",
+				State:          "initialized",
+				Decimals:       6,
+				Amount:         "0",
+				UIAmount:       0.0,
+				UIAmountString: "0",
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
+			},
 		}
 
-		// 应用过滤
+		// 应用过滤 - 首先过滤amount > 0的记录
+		filtered := []Holder{}
+		for _, h := range holders {
+			// 将amount字符串转换为数字进行比较
+			if amount, err := strconv.ParseFloat(h.Amount, 64); err == nil && amount > 0 {
+				filtered = append(filtered, h)
+			}
+		}
+		holders = filtered
+		
+		// 应用mint_address过滤
 		if mintAddress != "" {
 			filtered := []Holder{}
 			for _, h := range holders {
@@ -607,6 +632,63 @@ func TestHoldersEndpointFiltering(t *testing.T) {
 	t.Log("持有者过滤测试通过")
 }
 
+// TestHoldersEndpointAmountFiltering 测试amount > 0过滤功能
+func TestHoldersEndpointAmountFiltering(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	// 测试基本查询，应该只返回amount > 0的记录
+	resp, err := http.Get(server.URL + "/holders")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("期望状态码 %d, 实际 %d", http.StatusOK, resp.StatusCode)
+	}
+
+	var apiResp APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if !apiResp.Success {
+		t.Error("API响应应该成功")
+	}
+
+	// 验证只返回amount > 0的记录（应该只有1个，因为我们有2个测试数据，其中1个amount为0）
+	if apiResp.Total != 1 {
+		t.Errorf("期望只返回1个amount > 0的记录，实际 %d", apiResp.Total)
+	}
+
+	// 验证返回的数据中所有记录的amount都大于0
+	data, ok := apiResp.Data.([]interface{})
+	if !ok {
+		t.Fatal("响应数据格式错误")
+	}
+
+	for _, item := range data {
+		holder, ok := item.(map[string]interface{})
+		if !ok {
+			t.Fatal("持有者数据格式错误")
+		}
+		amount, ok := holder["amount"].(string)
+		if !ok {
+			t.Fatal("amount字段格式错误")
+		}
+		amountFloat, err := strconv.ParseFloat(amount, 64)
+		if err != nil {
+			t.Fatalf("amount转换失败: %v", err)
+		}
+		if amountFloat <= 0 {
+			t.Errorf("发现amount <= 0的记录: %f", amountFloat)
+		}
+	}
+
+	t.Logf("amount过滤测试通过，成功过滤掉amount为0的记录")
+}
+
 // =============================================================================
 // SPL Token测试
 // =============================================================================
@@ -836,13 +918,13 @@ func TestSPLEndpointUpdateByMintAddress(t *testing.T) {
 	}
 
 	// 验证更新后的数据
-	if splData, ok := apiResp.Data.(map[string]interface{}); ok {
-		if splData["mint_address"] != "test_mint_address_update_12345678901234567890123456789012" {
-			t.Errorf("期望mint_address为test_mint_address_update_12345678901234567890123456789012, 实际: %v", splData["mint_address"])
-		}
-		if splData["symbol"] != "TESTUPDATED" {
-			t.Errorf("期望symbol为TESTUPDATED, 实际: %v", splData["symbol"])
-		}
+		if splData, ok := apiResp.Data.(map[string]interface{}); ok {
+			if splData["mint_address"] != "test_mint_address_update_12345678901234567890123456789012" {
+				t.Errorf("期望mint_address为test_mint_address_update_12345678901234567890123456789012, 实际: %v", splData["mint_address"])
+			}
+			if splData["symbol"] != "TESTUPDATED" {
+				t.Errorf("期望symbol为TESTUPDATED, 实际: %v", splData["symbol"])
+			}
 	}
 
 	t.Log("根据mint_address更新SPL Token测试通过")
@@ -898,11 +980,11 @@ func TestSPLEndpointDeleteByMintAddress(t *testing.T) {
 	}
 
 	// 验证删除成功
-	if msgData, ok := apiResp.Data.(map[string]interface{}); ok {
-		if msgData["message"] != "SPL记录已删除" {
-			t.Errorf("期望删除成功消息, 实际: %v", msgData["message"])
+		if msgData, ok := apiResp.Data.(map[string]interface{}); ok {
+			if msgData["message"] != "SPL记录已删除" {
+				t.Errorf("期望删除成功消息, 实际: %v", msgData["message"])
+			}
 		}
-	}
 
 	// 验证记录已被删除 - 尝试再次获取应该返回404
 	resp, err = http.Get(server.URL + "/spls/test_mint_address_delete")
