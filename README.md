@@ -269,7 +269,62 @@ curl -X DELETE "http://localhost:8090/spls/{mint_address}"
 }
 ```
 
-#### 4. 查询参数说明
+#### 4. Holder 状态更新 API
+
+**接口：** `PUT /holders/{mint_address}/{pubkey}`
+
+**描述：** 更新指定 Holder 的状态
+
+**路径参数：**
+- `mint_address`: Token 的 mint 地址
+- `pubkey`: Holder 的公钥地址
+
+**请求体：**
+```json
+{
+  "state": "Initialized"
+}
+```
+
+**支持的状态值：**
+- `Uninitialized`: 未初始化
+- `Initialized`: 已初始化
+- `Frozen`: 已冻结
+
+**请求示例：**
+```bash
+curl -X PUT "http://localhost:8090/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg/13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf" \
+  -H "Content-Type: application/json" \
+  -d '{"state": "Initialized"}'
+```
+
+**成功响应：**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 22,
+    "mint_address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+    "pubkey": "13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf",
+    "state": "Initialized",
+    "owner": "6Vmny6y3mLA4kaDTjnZJabvZ8jLKQBg4aqbaERHmEeLZ",
+    "amount": "200121791",
+    "uiAmount": 2.001218,
+    "decimals": 8,
+    "updatedAt": "2025-09-14T15:36:09+08:00"
+  }
+}
+```
+
+**错误响应：**
+```json
+{
+  "success": false,
+  "error": "state必须是以下值之一: [Uninitialized Initialized Frozen]"
+}
+```
+
+#### 5. 查询参数说明
 
 | 参数 | 类型 | 说明 | 示例 |
 |------|------|------|------|

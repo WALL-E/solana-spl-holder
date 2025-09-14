@@ -164,6 +164,11 @@ type SPLUpdateRequest struct {
 	MintAddress string `json:"mint_address" validate:"required,min=32,max=255"`
 }
 
+// HolderUpdateRequest 更新Holder状态的请求结构
+type HolderUpdateRequest struct {
+	State string `json:"state" validate:"required"`
+}
+
 // 验证SPL创建请求
 func (req *SPLCreateRequest) Validate() error {
 	if strings.TrimSpace(req.Symbol) == "" {
@@ -196,6 +201,17 @@ func (req *SPLUpdateRequest) Validate() error {
 		return fmt.Errorf("mint_address长度必须在32-255个字符之间")
 	}
 	return nil
+}
+
+// 验证Holder更新请求
+func (req *HolderUpdateRequest) Validate() error {
+	validStates := []string{"Uninitialized", "Initialized", "Frozen"}
+	for _, validState := range validStates {
+		if req.State == validState {
+			return nil
+		}
+	}
+	return fmt.Errorf("state必须是以下值之一: %v", validStates)
 }
 
 // 查询spl表所有mint_address
@@ -900,6 +916,123 @@ func deleteSPLByMintAddress(db *sql.DB, mintAddress string) error {
 	return nil
 }
 
+// 更新Holder状态
+func updateHolderState(db *sql.DB, mintAddress, pubkey, state string) (*Holder, error) {
+	// 检查记录是否存在
+	var exists bool
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM holder WHERE mint_address = ? AND pubkey = ?)", mintAddress, pubkey).Scan(&exists)
+	if err != nil {
+		return nil, wrapError("检查Holder记录是否存在", err)
+	}
+
+	if !exists {
+		return nil, fmt.Errorf("mint_address为 %s 且 pubkey为 %s 的Holder记录不存在", mintAddress, pubkey)
+	}
+
+	// 更新状态
+	_, err = db.Exec("UPDATE holder SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE mint_address = ? AND pubkey = ?", state, mintAddress, pubkey)
+	if err != nil {
+		return nil, wrapError("更新Holder状态", err)
+	}
+
+	// 查询更新后的记录
+	var holder Holder
+	err = db.QueryRow(`
+		SELECT id, mint_address, pubkey, lamports, is_native, owner, state, decimals, 
+		       amount, ui_amount, ui_amount_string, created_at, updated_at 
+		FROM holder 
+		WHERE mint_address = ? AND pubkey = ?
+	`, mintAddress, pubkey).Scan(
+		&holder.ID, &holder.MintAddress, &holder.Pubkey, &holder.Lamports,
+		&holder.IsNative, &holder.Owner, &holder.State, &holder.Decimals,
+		&holder.Amount, &holder.UIAmount, &holder.UIAmountString,
+		&holder.CreatedAt, &holder.UpdatedAt,
+	)
+	if err != nil {
+		return nil, wrapError("查询更新后的Holder记录", err)
+	}
+
+	return &holder, nil
+}
+
+// 处理更新Holder状态的HTTP请求
+func handleUpdateHolderState(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			sendJSONResponse(w, http.StatusMethodNotAllowed, APIResponse{
+				Success: false,
+				Error:   "Method not allowed",
+			})
+			return
+		}
+
+		// 从URL路径中提取mint_address和pubkey
+		path := r.URL.Path
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) < 3 {
+			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
+				Success: false,
+				Error:   "Missing mint_address or pubkey",
+			})
+			return
+		}
+
+		mintAddress := parts[len(parts)-2]
+		pubkey := parts[len(parts)-1]
+		if mintAddress == "" || pubkey == "" {
+			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
+				Success: false,
+				Error:   "Invalid mint_address or pubkey",
+			})
+			return
+		}
+
+		// 解析请求体
+		var req HolderUpdateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			logError("Failed to decode request body", err)
+			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
+				Success: false,
+				Error:   "Invalid JSON format",
+			})
+			return
+		}
+
+		// 验证请求
+		if err := req.Validate(); err != nil {
+			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
+				Success: false,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		// 更新Holder状态
+		holder, err := updateHolderState(db, mintAddress, pubkey, req.State)
+		if err != nil {
+			logError("Failed to update holder state", err)
+			if strings.Contains(err.Error(), "不存在") {
+				sendJSONResponse(w, http.StatusNotFound, APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+			} else {
+				sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
+					Success: false,
+					Error:   "Failed to update holder state",
+				})
+			}
+			return
+		}
+
+		// 返回成功响应
+		sendJSONResponse(w, http.StatusOK, APIResponse{
+			Success: true,
+			Data:    holder,
+		})
+	}
+}
+
 // 处理删除SPL的HTTP请求
 func handleDeleteSPL(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1469,6 +1602,48 @@ func getAPIDocumentation() string {
         <p><strong>示例:</strong> <code>/holders?page=1&limit=10&mint_address=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</code></p>
     </div>
     
+    <div class="endpoint">
+        <h4><span class="method put">PUT</span> /holders/{mint_address}/{pubkey}</h4>
+        <p><strong>描述:</strong> 更新指定 Holder 的状态</p>
+        <p><strong>路径参数:</strong></p>
+        <table>
+            <tr><th>参数</th><th>类型</th><th>描述</th></tr>
+            <tr><td>mint_address</td><td>string</td><td>Token 的 mint 地址</td></tr>
+            <tr><td>pubkey</td><td>string</td><td>Holder 的公钥地址</td></tr>
+        </table>
+        <p><strong>请求体:</strong></p>
+        <div class="code">{
+    "state": "Initialized"
+}</div>
+        <p><strong>支持的状态值:</strong></p>
+        <ul>
+            <li><code>Uninitialized</code> - 未初始化</li>
+            <li><code>Initialized</code> - 已初始化</li>
+            <li><code>Frozen</code> - 已冻结</li>
+        </ul>
+        <p><strong>示例:</strong> <code>/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg/13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf</code></p>
+        <p><strong>成功响应示例:</strong></p>
+        <div class="response">{
+    "success": true,
+    "data": {
+        "id": 1,
+        "mint_address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+        "pubkey": "13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf",
+        "state": "Initialized",
+        "owner": "13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf",
+        "amount": "1000000",
+        "uiAmount": 1.0,
+        "decimals": 6,
+        "updatedAt": "2024-01-01T12:05:00Z"
+    }
+}</div>
+        <p><strong>错误响应示例:</strong></p>
+        <div class="response">{
+    "success": false,
+    "error": "state 必须是 Uninitialized、Initialized、Frozen 之一"
+}</div>
+    </div>
+
     <h3>3. 系统状态</h3>
     
     <div class="endpoint">
@@ -1592,6 +1767,19 @@ func run(cmd *cobra.Command, args []string) {
 	})
 
 	mux.HandleFunc("/holders", apiHandlerMariaDB(db))
+
+	// Holder状态更新路由 (支持 /holders/{mint_address}/{pubkey})
+	mux.HandleFunc("/holders/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			handleUpdateHolderState(db)(w, r)
+		default:
+			sendJSONResponse(w, http.StatusMethodNotAllowed, APIResponse{
+				Success: false,
+				Error:   "Method not allowed",
+			})
+		}
+	})
 
 	// SPL CRUD API路由
 	mux.HandleFunc("/spls", func(w http.ResponseWriter, r *http.Request) {

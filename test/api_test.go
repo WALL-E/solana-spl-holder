@@ -228,7 +228,7 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 			}
 		}
 		holders = filtered
-		
+
 		// 应用mint_address过滤
 		if mintAddress != "" {
 			filtered := []Holder{}
@@ -918,13 +918,13 @@ func TestSPLEndpointUpdateByMintAddress(t *testing.T) {
 	}
 
 	// 验证更新后的数据
-		if splData, ok := apiResp.Data.(map[string]interface{}); ok {
-			if splData["mint_address"] != "test_mint_address_update_12345678901234567890123456789012" {
-				t.Errorf("期望mint_address为test_mint_address_update_12345678901234567890123456789012, 实际: %v", splData["mint_address"])
-			}
-			if splData["symbol"] != "TESTUPDATED" {
-				t.Errorf("期望symbol为TESTUPDATED, 实际: %v", splData["symbol"])
-			}
+	if splData, ok := apiResp.Data.(map[string]interface{}); ok {
+		if splData["mint_address"] != "test_mint_address_update_12345678901234567890123456789012" {
+			t.Errorf("期望mint_address为test_mint_address_update_12345678901234567890123456789012, 实际: %v", splData["mint_address"])
+		}
+		if splData["symbol"] != "TESTUPDATED" {
+			t.Errorf("期望symbol为TESTUPDATED, 实际: %v", splData["symbol"])
+		}
 	}
 
 	t.Log("根据mint_address更新SPL Token测试通过")
@@ -980,11 +980,11 @@ func TestSPLEndpointDeleteByMintAddress(t *testing.T) {
 	}
 
 	// 验证删除成功
-		if msgData, ok := apiResp.Data.(map[string]interface{}); ok {
-			if msgData["message"] != "SPL记录已删除" {
-				t.Errorf("期望删除成功消息, 实际: %v", msgData["message"])
-			}
+	if msgData, ok := apiResp.Data.(map[string]interface{}); ok {
+		if msgData["message"] != "SPL记录已删除" {
+			t.Errorf("期望删除成功消息, 实际: %v", msgData["message"])
 		}
+	}
 
 	// 验证记录已被删除 - 尝试再次获取应该返回404
 	resp, err = http.Get(server.URL + "/spls/test_mint_address_delete")
