@@ -11,6 +11,7 @@
 - 🔄 **实时数据采集**: 定时从 Solana 区块链获取 SPL Token 持有者信息
 - 🚀 **高性能 API**: 提供 RESTful API 进行数据查询和分析
 - 📊 **多维度查询**: 支持分页、排序、过滤等多种查询方式
+- 🪙 **SPL Token 管理**: 完整的 CRUD API 支持 SPL Token 配置管理
 - 🗄️ **持久化存储**: 使用 MariaDB 进行数据持久化存储
 - 🌐 **多网络支持**: 支持 Devnet、Localnet 和 Mainnet
 - 📈 **监控友好**: 内置健康检查和状态监控端点
@@ -170,6 +171,7 @@ cd setup && go run init_spl_data.go
 - **API 文档**: http://localhost:8090/
 - **健康检查**: http://localhost:8090/health
 - **持有者查询**: http://localhost:8090/holders
+- **SPL Token 管理**: http://localhost:8090/spls
 
 ### 主要 API 端点
 
@@ -194,7 +196,80 @@ curl "http://localhost:8090/holders?sort=-ui_amount"  # 按金额降序
 curl "http://localhost:8090/holders?sort=pubkey"      # 按地址升序
 ```
 
-#### 3. 查询参数说明
+#### 3. SPL Token 管理
+
+##### 3.1 获取所有 SPL Token
+```bash
+curl "http://localhost:8090/spls"
+```
+
+##### 3.2 创建新的 SPL Token
+```bash
+curl -X POST "http://localhost:8090/spls" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mint_address": "新的Token地址",
+    "name": "Token名称",
+    "symbol": "TOKEN",
+    "decimals": 6,
+    "description": "Token描述"
+  }'
+```
+
+##### 3.3 根据 mint_address 获取特定 SPL Token
+```bash
+curl "http://localhost:8090/spls/{mint_address}"
+```
+
+##### 3.4 更新 SPL Token 信息
+```bash
+curl -X PUT "http://localhost:8090/spls/{mint_address}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "更新后的Token名称",
+    "symbol": "NEWTOKEN",
+    "description": "更新后的描述"
+  }'
+```
+
+##### 3.5 删除 SPL Token
+```bash
+curl -X DELETE "http://localhost:8090/spls/{mint_address}"
+```
+
+##### 3.6 SPL Token API 响应格式
+
+**获取所有 SPL Token 响应示例：**
+```json
+[
+  {
+    "id": 1,
+    "mint_address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+    "name": "Example Token",
+    "symbol": "EXT",
+    "decimals": 6,
+    "description": "这是一个示例Token",
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z"
+  }
+]
+```
+
+**创建/更新 SPL Token 响应示例：**
+```json
+{
+  "id": 1,
+  "mint_address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+  "name": "Example Token",
+  "symbol": "EXT",
+  "decimals": 6,
+  "description": "这是一个示例Token",
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-01T00:00:00Z"
+}
+```
+
+#### 4. 查询参数说明
 
 | 参数 | 类型 | 说明 | 示例 |
 |------|------|------|------|

@@ -545,6 +545,24 @@ func getSPLByID(db *sql.DB, id int) (*SPL, error) {
 	return &spl, nil
 }
 
+// 根据mint_address获取SPL记录
+func getSPLByMintAddress(db *sql.DB, mintAddress string) (*SPL, error) {
+	var spl SPL
+	err := db.QueryRow(
+		"SELECT id, symbol, mint_address, created_at, updated_at FROM spl WHERE mint_address = ?",
+		mintAddress,
+	).Scan(&spl.ID, &spl.Symbol, &spl.MintAddress, &spl.CreatedAt, &spl.UpdatedAt)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("SPL记录不存在: mint_address=%s", mintAddress)
+		}
+		return nil, wrapError("failed to get SPL by mint_address", err)
+	}
+
+	return &spl, nil
+}
+
 // 处理获取SPL列表的HTTP请求
 func handleGetSPLList(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -611,8 +629,8 @@ func handleGetSPLList(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// 处理根据ID获取SPL的HTTP请求
-func handleGetSPLByID(db *sql.DB) http.HandlerFunc {
+// 处理根据mint_address获取SPL的HTTP请求
+func handleGetSPLByMintAddress(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			sendJSONResponse(w, http.StatusMethodNotAllowed, APIResponse{
@@ -622,31 +640,30 @@ func handleGetSPLByID(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// 从URL路径中提取ID
+		// 从URL路径中提取mint_address
 		path := r.URL.Path
 		parts := strings.Split(strings.Trim(path, "/"), "/")
 		if len(parts) < 2 {
 			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
 				Success: false,
-				Error:   "Missing SPL ID",
+				Error:   "Missing SPL mint_address",
 			})
 			return
 		}
 
-		idStr := parts[len(parts)-1]
-		id, err := strconv.Atoi(idStr)
-		if err != nil {
+		mintAddress := parts[len(parts)-1]
+		if mintAddress == "" {
 			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
 				Success: false,
-				Error:   "Invalid SPL ID",
+				Error:   "Invalid SPL mint_address",
 			})
 			return
 		}
 
 		// 获取SPL记录
-		spl, err := getSPLByID(db, id)
+		spl, err := getSPLByMintAddress(db, mintAddress)
 		if err != nil {
-			logError("Failed to get SPL by ID", err)
+			logError("Failed to get SPL by mint_address", err)
 			if strings.Contains(err.Error(), "不存在") {
 				sendJSONResponse(w, http.StatusNotFound, APIResponse{
 					Success: false,
@@ -715,6 +732,52 @@ func updateSPL(db *sql.DB, id int, req *SPLUpdateRequest) (*SPL, error) {
 	return updatedSPL, nil
 }
 
+// 根据mint_address更新SPL记录
+func updateSPLByMintAddress(db *sql.DB, mintAddress string, req *SPLUpdateRequest) (*SPL, error) {
+	// 验证请求
+	if err := req.Validate(); err != nil {
+		return nil, wrapError("validation failed", err)
+	}
+
+	// 检查记录是否存在
+	existingSPL, err := getSPLByMintAddress(db, mintAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	// 检查新的mint_address是否被其他记录使用
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM spl WHERE mint_address = ? AND mint_address != ?", req.MintAddress, mintAddress).Scan(&count)
+	if err != nil {
+		return nil, wrapError("failed to check existing mint_address", err)
+	}
+	if count > 0 {
+		return nil, fmt.Errorf("mint_address已被其他记录使用: %s", req.MintAddress)
+	}
+
+	// 更新记录
+	now := time.Now()
+	_, err = db.Exec(
+		"UPDATE spl SET symbol = ?, mint_address = ?, updated_at = ? WHERE mint_address = ?",
+		req.Symbol, req.MintAddress, now, mintAddress,
+	)
+	if err != nil {
+		return nil, wrapError("failed to update SPL record", err)
+	}
+
+	// 返回更新后的记录
+	updatedSPL := &SPL{
+		ID:          existingSPL.ID,
+		Symbol:      req.Symbol,
+		MintAddress: req.MintAddress,
+		CreatedAt:   existingSPL.CreatedAt,
+		UpdatedAt:   now,
+	}
+
+	logInfo("Updated SPL record: MintAddress=%s, Symbol=%s, NewMintAddress=%s", mintAddress, req.Symbol, req.MintAddress)
+	return updatedSPL, nil
+}
+
 // 处理更新SPL的HTTP请求
 func handleUpdateSPL(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -726,23 +789,22 @@ func handleUpdateSPL(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// 从URL路径中提取ID
+		// 从URL路径中提取mint_address
 		path := r.URL.Path
 		parts := strings.Split(strings.Trim(path, "/"), "/")
 		if len(parts) < 2 {
 			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
 				Success: false,
-				Error:   "Missing SPL ID",
+				Error:   "Missing SPL mint_address",
 			})
 			return
 		}
 
-		idStr := parts[len(parts)-1]
-		id, err := strconv.Atoi(idStr)
-		if err != nil {
+		mintAddress := parts[len(parts)-1]
+		if mintAddress == "" {
 			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
 				Success: false,
-				Error:   "Invalid SPL ID",
+				Error:   "Invalid SPL mint_address",
 			})
 			return
 		}
@@ -759,7 +821,7 @@ func handleUpdateSPL(db *sql.DB) http.HandlerFunc {
 		}
 
 		// 更新SPL记录
-		spl, err := updateSPL(db, id, &req)
+		spl, err := updateSPLByMintAddress(db, mintAddress, &req)
 		if err != nil {
 			logError("Failed to update SPL", err)
 			if strings.Contains(err.Error(), "不存在") {
@@ -811,6 +873,33 @@ func deleteSPL(db *sql.DB, id int) error {
 	return nil
 }
 
+// 根据mint_address删除SPL记录
+func deleteSPLByMintAddress(db *sql.DB, mintAddress string) error {
+	// 检查记录是否存在
+	_, err := getSPLByMintAddress(db, mintAddress)
+	if err != nil {
+		return err
+	}
+
+	// 删除记录
+	result, err := db.Exec("DELETE FROM spl WHERE mint_address = ?", mintAddress)
+	if err != nil {
+		return wrapError("failed to delete SPL record", err)
+	}
+
+	// 检查是否真的删除了记录
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return wrapError("failed to get rows affected", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("SPL记录删除失败: mint_address=%s", mintAddress)
+	}
+
+	logInfo("Deleted SPL record: mint_address=%s", mintAddress)
+	return nil
+}
+
 // 处理删除SPL的HTTP请求
 func handleDeleteSPL(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -822,29 +911,28 @@ func handleDeleteSPL(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// 从URL路径中提取ID
+		// 从URL路径中提取mint_address
 		path := r.URL.Path
 		parts := strings.Split(strings.Trim(path, "/"), "/")
 		if len(parts) < 2 {
 			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
 				Success: false,
-				Error:   "Missing SPL ID",
+				Error:   "Missing SPL mint_address",
 			})
 			return
 		}
 
-		idStr := parts[len(parts)-1]
-		id, err := strconv.Atoi(idStr)
-		if err != nil {
+		mintAddress := parts[len(parts)-1]
+		if mintAddress == "" {
 			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
 				Success: false,
-				Error:   "Invalid SPL ID",
+				Error:   "Invalid SPL mint_address",
 			})
 			return
 		}
 
 		// 删除SPL记录
-		err = deleteSPL(db, id)
+		err := deleteSPLByMintAddress(db, mintAddress)
 		if err != nil {
 			logError("Failed to delete SPL", err)
 			if strings.Contains(err.Error(), "不存在") {
@@ -1218,7 +1306,7 @@ func getAPIDocumentation() string {
     <h3>1. SPL Token 管理</h3>
     
     <div class="endpoint">
-        <h4><span class="method post">POST</span> /api/spl</h4>
+        <h4><span class="method post">POST</span> /spls</h4>
         <p><strong>描述:</strong> 创建新的 SPL Token 记录</p>
         <p><strong>请求体:</strong></p>
         <div class="code">{
@@ -1239,7 +1327,7 @@ func getAPIDocumentation() string {
     </div>
     
     <div class="endpoint">
-        <h4><span class="method get">GET</span> /api/spl</h4>
+        <h4><span class="method get">GET</span> /spls</h4>
         <p><strong>描述:</strong> 获取 SPL Token 列表（支持分页）</p>
         <p><strong>查询参数:</strong></p>
         <table>
@@ -1247,7 +1335,7 @@ func getAPIDocumentation() string {
             <tr><td>page</td><td>int</td><td>1</td><td>页码</td></tr>
             <tr><td>limit</td><td>int</td><td>10</td><td>每页数量（最大1000）</td></tr>
         </table>
-        <p><strong>示例:</strong> <code>/api/spl?page=1&limit=5</code></p>
+        <p><strong>示例:</strong> <code>/spls?page=1&limit=5</code></p>
         <p><strong>响应示例:</strong></p>
         <div class="response">{
     "success": true,
@@ -1266,9 +1354,9 @@ func getAPIDocumentation() string {
     </div>
     
     <div class="endpoint">
-        <h4><span class="method get">GET</span> /api/spl/{id}</h4>
+        <h4><span class="method get">GET</span> /spls/{id}</h4>
         <p><strong>描述:</strong> 根据 ID 获取单个 SPL Token 记录</p>
-        <p><strong>示例:</strong> <code>/api/spl/1</code></p>
+        <p><strong>示例:</strong> <code>/spls/1</code></p>
         <p><strong>响应示例:</strong></p>
         <div class="response">{
     "success": true,
@@ -1283,9 +1371,26 @@ func getAPIDocumentation() string {
     </div>
     
     <div class="endpoint">
-        <h4><span class="method put">PUT</span> /api/spl/{id}</h4>
+        <h4><span class="method get">GET</span> /spls/{mint_address}</h4>
+        <p><strong>描述:</strong> 根据 mint_address 获取单个 SPL Token 记录</p>
+        <p><strong>示例:</strong> <code>/spls/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</code></p>
+        <p><strong>响应示例:</strong></p>
+        <div class="response">{
+    "success": true,
+    "data": {
+        "id": 1,
+        "symbol": "USDC",
+        "mint_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "created_at": "2024-01-01T12:00:00Z",
+        "updated_at": "2024-01-01T12:00:00Z"
+    }
+}</div>
+    </div>
+    
+    <div class="endpoint">
+        <h4><span class="method put">PUT</span> /spls/{id}</h4>
         <p><strong>描述:</strong> 更新指定 ID 的 SPL Token 记录</p>
-        <p><strong>示例:</strong> <code>/api/spl/1</code></p>
+        <p><strong>示例:</strong> <code>/spls/1</code></p>
         <p><strong>请求体:</strong></p>
         <div class="code">{
     "symbol": "USDC-Updated",
@@ -1294,14 +1399,49 @@ func getAPIDocumentation() string {
     </div>
     
     <div class="endpoint">
-        <h4><span class="method delete">DELETE</span> /api/spl/{id}</h4>
+        <h4><span class="method put">PUT</span> /spls/{mint_address}</h4>
+        <p><strong>描述:</strong> 根据 mint_address 更新 SPL Token 记录</p>
+        <p><strong>示例:</strong> <code>/spls/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</code></p>
+        <p><strong>请求体:</strong></p>
+        <div class="code">{
+    "symbol": "USDC-Updated",
+    "mint_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+}</div>
+        <p><strong>响应示例:</strong></p>
+        <div class="response">{
+    "success": true,
+    "data": {
+        "id": 1,
+        "symbol": "USDC-Updated",
+        "mint_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "created_at": "2024-01-01T12:00:00Z",
+        "updated_at": "2024-01-01T12:05:00Z"
+    }
+}</div>
+    </div>
+    
+    <div class="endpoint">
+        <h4><span class="method delete">DELETE</span> /spls/{id}</h4>
         <p><strong>描述:</strong> 删除指定 ID 的 SPL Token 记录</p>
-        <p><strong>示例:</strong> <code>/api/spl/1</code></p>
+        <p><strong>示例:</strong> <code>/spls/1</code></p>
         <p><strong>响应示例:</strong></p>
         <div class="response">{
     "success": true,
     "data": {
         "message": "SPL记录删除成功"
+    }
+}</div>
+    </div>
+    
+    <div class="endpoint">
+        <h4><span class="method delete">DELETE</span> /spls/{mint_address}</h4>
+        <p><strong>描述:</strong> 根据 mint_address 删除 SPL Token 记录</p>
+        <p><strong>示例:</strong> <code>/spls/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</code></p>
+        <p><strong>响应示例:</strong></p>
+        <div class="response">{
+    "success": true,
+    "data": {
+        "message": "SPL记录已删除"
     }
 }</div>
     </div>
@@ -1448,7 +1588,7 @@ func run(cmd *cobra.Command, args []string) {
 	mux.HandleFunc("/holders", apiHandlerMariaDB(db))
 
 	// SPL CRUD API路由
-	mux.HandleFunc("/api/spl", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/spls", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
 			handleCreateSPL(db)(w, r)
@@ -1462,11 +1602,11 @@ func run(cmd *cobra.Command, args []string) {
 		}
 	})
 
-	// SPL单个记录操作路由 (支持 /api/spl/1, /api/spl/2 等)
-	mux.HandleFunc("/api/spl/", func(w http.ResponseWriter, r *http.Request) {
+	// SPL单个记录操作路由 (支持 /spls/{mint_address})
+	mux.HandleFunc("/spls/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			handleGetSPLByID(db)(w, r)
+			handleGetSPLByMintAddress(db)(w, r)
 		case http.MethodPut:
 			handleUpdateSPL(db)(w, r)
 		case http.MethodDelete:
