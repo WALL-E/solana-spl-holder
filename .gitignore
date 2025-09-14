@@ -1,6 +1,10 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
+# Solana SPL Holder - .gitignore
+# Generated for Go projects with additional project-specific rules
+
+# =============================================================================
+# Go Language Specific
+# =============================================================================
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
@@ -11,11 +15,8 @@
 # Test binary, built with `go test -c`
 *.test
 
-# Code coverage profiles and other test artifacts
+# Output of the go coverage tool, specifically when used with LiteIDE
 *.out
-coverage.*
-*.coverprofile
-profile.cov
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
@@ -24,11 +25,222 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
-.env
+# Go module cache
+go.sum.backup
 
-# Editor/IDE
-# .idea/
-# .vscode/
-solana_spl_holder.db*
+# =============================================================================
+# Build and Distribution
+# =============================================================================
+
+# Build output directory
+build/
+dist/
+bin/
+
+# Compiled binary
 solana-spl-holder
+solana-spl-holder.exe
+
+# =============================================================================
+# Testing and Coverage
+# =============================================================================
+
+# Test coverage files
+coverage.out
+coverage.html
+coverage.xml
+*.coverprofile
+profile.cov
+c.out
+
+# Test cache
+.cache/
+
+# Benchmark results
+*.bench
+
+# =============================================================================
+# Development Environment
+# =============================================================================
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Configuration files (if containing sensitive data)
+config.local.*
+*.local.json
+*.local.yaml
+*.local.yml
+
+# =============================================================================
+# Database
+# =============================================================================
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+solana_spl_holder.db*
+
+# Database dumps
+*.sql.gz
+*.dump
+
+# =============================================================================
+# Logs and Runtime
+# =============================================================================
+
+# Log files
+*.log
+logs/
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# =============================================================================
+# Editor and IDE
+# =============================================================================
+
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# IntelliJ IDEA / GoLand
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# =============================================================================
+# Operating System
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# Temporary and Cache Files
+# =============================================================================
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+
+# Cache directories
+.cache/
+cache/
+
+# =============================================================================
+# Security and Secrets
+# =============================================================================
+
+# Private keys and certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# API keys and secrets
+secrets/
+.secrets/
+api-keys.json
+
+# =============================================================================
+# Documentation Build
+# =============================================================================
+
+# Generated documentation
+docs/_build/
+docs/build/
+site/
+
+# =============================================================================
+# Project Specific
+# =============================================================================
+
+# Solana keypairs (if any)
+*.json
+!setup/*.json
+!test/*.json
+!package.json
+
+# Local development files
+local/
+dev/
+
+# Performance profiling
+*.prof
+*.pprof
+cpu.prof
+mem.prof
+
+# Blockchain data (if stored locally)
+ledger/
+accounts/
+snapshots/

@@ -1433,7 +1433,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	// 设置HTTP服务器
 	mux := http.NewServeMux()
-	
+
 	// 根路径 - API文档
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -1444,7 +1444,7 @@ func run(cmd *cobra.Command, args []string) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(getAPIDocumentation()))
 	})
-	
+
 	mux.HandleFunc("/holders", apiHandlerMariaDB(db))
 
 	// SPL CRUD API路由

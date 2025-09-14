@@ -8,6 +8,8 @@ if [ -z "$SOLANA_RPC" ]; then
     exit 1
 fi
 
-$SCRIPT_DIR/solana-spl-holder \
+# 进入server目录运行服务
+cd "$SCRIPT_DIR/server"
+go run main.go \
     --rpc_url $SOLANA_RPC \
     --interval_time 300
