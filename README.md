@@ -282,7 +282,7 @@ curl -X DELETE "http://localhost:8090/spls/{mint_address}"
 **请求体：**
 ```json
 {
-  "state": "Initialized"
+  "state": "Frozen"
 }
 ```
 
