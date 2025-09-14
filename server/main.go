@@ -1126,6 +1126,10 @@ func apiHandlerMariaDB(db *sql.DB) http.HandlerFunc {
 			conds = append(conds, "mint_address = ?")
 			args = append(args, mint)
 		}
+		if state := query.Get("state"); state != "" {
+			conds = append(conds, "state = ?")
+			args = append(args, state)
+		}
 		if len(conds) > 0 {
 			baseQuery += " WHERE " + strings.Join(conds, " AND ")
 		}
@@ -1597,9 +1601,17 @@ func getAPIDocumentation() string {
             <tr><td>limit</td><td>int</td><td>每页数量（默认10，最大1000）</td></tr>
             <tr><td>owner</td><td>string</td><td>按持有者地址筛选</td></tr>
             <tr><td>mint_address</td><td>string</td><td>按 mint 地址筛选</td></tr>
+            <tr><td>state</td><td>string</td><td>按状态筛选（Uninitialized/Initialized/Frozen）</td></tr>
             <tr><td>sort</td><td>string</td><td>排序字段（加 - 前缀为降序）</td></tr>
         </table>
-        <p><strong>示例:</strong> <code>/holders?page=1&limit=10&mint_address=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</code></p>
+        <p><strong>示例:</strong></p>
+        <ul>
+            <li>基本查询: <code>/holders?page=1&limit=10</code></li>
+            <li>按状态过滤: <code>/holders?state=Frozen</code></li>
+            <li>按Token过滤: <code>/holders?mint_address=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</code></li>
+            <li>组合查询: <code>/holders?page=1&limit=10&mint_address=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&state=Frozen</code></li>
+            <li>多状态查询: <code>/holders?state=Initialized&sort=-amount</code></li>
+        </ul>
     </div>
     
     <div class="endpoint">

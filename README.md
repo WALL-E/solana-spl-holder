@@ -191,6 +191,13 @@ curl "http://localhost:8090/holders?page=2&limit=10"
 # 按 Token 过滤
 curl "http://localhost:8090/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg"
 
+# 按状态过滤
+curl "http://localhost:8090/holders?state=Frozen"     # 查询冻结状态的持有者
+curl "http://localhost:8090/holders?state=Initialized" # 查询已初始化状态的持有者
+
+# 组合查询
+curl "http://localhost:8090/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=Frozen"
+
 # 排序查询
 curl "http://localhost:8090/holders?sort=-ui_amount"  # 按金额降序
 curl "http://localhost:8090/holders?sort=pubkey"      # 按地址升序
@@ -331,6 +338,7 @@ curl -X PUT "http://localhost:8090/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa
 | `page` | int | 页码 (从1开始) | `page=2` |
 | `limit` | int | 每页数量 (1-100) | `limit=20` |
 | `mint_address` | string | Token 地址过滤 | `mint_address=Xs3e...` |
+| `state` | string | 状态过滤 (Uninitialized/Initialized/Frozen) | `state=Frozen` |
 | `sort` | string | 排序字段 | `sort=-ui_amount` |
 
 ### 响应格式
