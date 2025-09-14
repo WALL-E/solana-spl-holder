@@ -295,7 +295,7 @@ curl -X DELETE "http://localhost:8090/spls/{mint_address}"
 ```bash
 curl -X PUT "http://localhost:8090/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg/13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf" \
   -H "Content-Type: application/json" \
-  -d '{"state": "Initialized"}'
+  -d '{"state": "Frozen"}'
 ```
 
 **成功响应：**
@@ -306,7 +306,7 @@ curl -X PUT "http://localhost:8090/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa
     "id": 22,
     "mint_address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
     "pubkey": "13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf",
-    "state": "Initialized",
+    "state": "Frozen",
     "owner": "6Vmny6y3mLA4kaDTjnZJabvZ8jLKQBg4aqbaERHmEeLZ",
     "amount": "200121791",
     "uiAmount": 2.001218,
