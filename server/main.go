@@ -892,7 +892,7 @@ func apiHandlerMariaDB(db *sql.DB) http.HandlerFunc {
 			limit = 1000 // 限制最大查询数量
 		}
 		offset := (page - 1) * limit
-		baseQuery := "SELECT mint_address, pubkey, lamports, is_native, owner, state, decimals, amount, ui_amount, ui_amount_string, created_at, updated_at FROM holder"
+		baseQuery := "SELECT id, mint_address, pubkey, lamports, is_native, owner, state, decimals, amount, ui_amount, ui_amount_string, created_at, updated_at FROM holder"
 		var args []interface{}
 		var conds []string
 		if owner := query.Get("owner"); owner != "" {
@@ -947,7 +947,7 @@ func apiHandlerMariaDB(db *sql.DB) http.HandlerFunc {
 		var holders []Holder
 		for rows.Next() {
 			var h Holder
-			err := rows.Scan(&h.MintAddress, &h.Pubkey, &h.Lamports, &h.IsNative, &h.Owner, &h.State, &h.Decimals, &h.Amount, &h.UIAmount, &h.UIAmountString, &h.CreatedAt, &h.UpdatedAt)
+			err := rows.Scan(&h.ID, &h.MintAddress, &h.Pubkey, &h.Lamports, &h.IsNative, &h.Owner, &h.State, &h.Decimals, &h.Amount, &h.UIAmount, &h.UIAmountString, &h.CreatedAt, &h.UpdatedAt)
 			if err != nil {
 				logError("扫描数据行", err)
 				sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
