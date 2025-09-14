@@ -1301,7 +1301,11 @@ func getAPIDocumentation() string {
     
     <h2>📋 概述</h2>
     <p>这是一个用于管理 Solana SPL Token 持有者信息的 RESTful API 服务。</p>
-    <p><strong>基础URL:</strong> <code>http://localhost:8080</code></p>
+    <p><strong>基础URL:</strong> <code id="base-url"></code></p>
+    <script>
+        // 动态获取当前页面的基础URL
+        document.getElementById('base-url').textContent = window.location.origin;
+    </script>
     
     <h2>🔗 API 端点</h2>
     
