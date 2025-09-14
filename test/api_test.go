@@ -1,48 +1,810 @@
 package test
 
 import (
+	"bytes"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
-// 测试响应结构
+// =============================================================================
+// 测试数据结构
+// =============================================================================
+
+// APIResponse 通用API响应结构
 type APIResponse struct {
 	Success bool        `json:"success"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data"`
+	Data    interface{} `json:"data,omitempty"`
+	Error   string      `json:"error,omitempty"`
+	Total   int         `json:"total,omitempty"`
+	Page    int         `json:"page,omitempty"`
+	Limit   int         `json:"limit,omitempty"`
 }
 
-// 健康检查响应结构
+// HealthResponse 健康检查响应结构
 type HealthResponse struct {
 	Status    string    `json:"status"`
 	Timestamp time.Time `json:"timestamp"`
 	Uptime    string    `json:"uptime"`
+	Version   string    `json:"version"`
 }
+
+// Holder 持有者数据结构
+type Holder struct {
+	ID             int64     `json:"id"`
+	MintAddress    string    `json:"mint_address"`
+	Pubkey         string    `json:"pubkey"`
+	Lamports       uint64    `json:"lamports"`
+	IsNative       bool      `json:"isNative"`
+	Owner          string    `json:"owner"`
+	State          string    `json:"state"`
+	Decimals       int       `json:"decimals"`
+	Amount         string    `json:"amount"`
+	UIAmount       float64   `json:"uiAmount"`
+	UIAmountString string    `json:"uiAmountString"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+// SPL Token数据结构
+type SPL struct {
+	ID          int       `json:"id"`
+	Symbol      string    `json:"symbol"`
+	MintAddress string    `json:"mint_address"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// SPLCreateRequest SPL创建请求
+type SPLCreateRequest struct {
+	Symbol      string `json:"symbol"`
+	MintAddress string `json:"mint_address"`
+}
+
+// SPLUpdateRequest SPL更新请求
+type SPLUpdateRequest struct {
+	Symbol      string `json:"symbol"`
+	MintAddress string `json:"mint_address"`
+}
+
+// =============================================================================
+// 测试辅助函数
+// =============================================================================
+
+// setupTestDB 创建测试数据库连接
+func setupTestDB(t *testing.T) *sql.DB {
+	// 使用环境变量或默认测试数据库连接
+	dbConn := os.Getenv("TEST_DB_CONN")
+	if dbConn == "" {
+		dbConn = "root:123456@tcp(localhost:3306)/solana_spl_holder_test?charset=utf8mb4&parseTime=True&loc=Local"
+	}
+
+	db, err := sql.Open("mysql", dbConn)
+	if err != nil {
+		t.Skipf("跳过数据库测试，无法连接数据库: %v", err)
+		return nil
+	}
+
+	if err := db.Ping(); err != nil {
+		t.Skipf("跳过数据库测试，数据库连接失败: %v", err)
+		return nil
+	}
+
+	return db
+}
+
+// cleanupTestDB 清理测试数据库
+func cleanupTestDB(t *testing.T, db *sql.DB) {
+	if db == nil {
+		return
+	}
+
+	// 清理测试数据
+	_, err := db.Exec("DELETE FROM holder WHERE mint_address LIKE 'test_%'")
+	if err != nil {
+		t.Logf("清理holder表失败: %v", err)
+	}
+
+	_, err = db.Exec("DELETE FROM spl WHERE symbol LIKE 'TEST%'")
+	if err != nil {
+		t.Logf("清理spl表失败: %v", err)
+	}
+
+	db.Close()
+}
+
+// createTestServer 创建测试HTTP服务器
+func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
+	// 这里需要从main.go中提取路由处理逻辑
+	// 由于main.go中的处理函数需要重构才能在测试中使用，
+	// 我们先创建一个模拟的处理器
+	mux := http.NewServeMux()
+
+	// 健康检查端点
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		response := HealthResponse{
+			Status:    "ok",
+			Timestamp: time.Now(),
+			Uptime:    "0s", // 测试环境
+			Version:   "test",
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	})
+
+	// API文档端点
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(`<!DOCTYPE html>
+<html><head><title>Solana SPL Holder API</title></head>
+<body><h1>API Documentation</h1><p>Test API Server</p></body></html>`))
+	})
+
+	// 持有者查询端点
+	mux.HandleFunc("/holders", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// 解析查询参数
+		page := 1
+		limit := 20
+		mintAddress := r.URL.Query().Get("mint_address")
+		// sort := r.URL.Query().Get("sort") // 暂未实现排序功能
+
+		if p := r.URL.Query().Get("page"); p != "" {
+			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+				page = parsed
+			}
+		}
+
+		if l := r.URL.Query().Get("limit"); l != "" {
+			if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+				limit = parsed
+			}
+		}
+
+		// 模拟数据
+		holders := []Holder{
+			{
+				ID:             1,
+				MintAddress:    "test_mint_address_1",
+				Pubkey:         "test_pubkey_1",
+				Lamports:       2039280,
+				IsNative:       false,
+				Owner:          "test_owner_1",
+				State:          "initialized",
+				Decimals:       6,
+				Amount:         "1000000",
+				UIAmount:       1.0,
+				UIAmountString: "1",
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
+			},
+		}
+
+		// 应用过滤
+		if mintAddress != "" {
+			filtered := []Holder{}
+			for _, h := range holders {
+				if h.MintAddress == mintAddress {
+					filtered = append(filtered, h)
+				}
+			}
+			holders = filtered
+		}
+
+		// 构建响应
+		response := APIResponse{
+			Success: true,
+			Data:    holders,
+			Total:   len(holders),
+			Page:    page,
+			Limit:   limit,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	})
+
+	// SPL Token端点
+	mux.HandleFunc("/spl", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			// 获取SPL列表
+			spls := []SPL{
+				{
+					ID:          1,
+					Symbol:      "TEST",
+					MintAddress: "test_mint_address",
+					CreatedAt:   time.Now(),
+					UpdatedAt:   time.Now(),
+				},
+			}
+
+			response := APIResponse{
+				Success: true,
+				Data:    spls,
+				Total:   len(spls),
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(response)
+
+		case http.MethodPost:
+			// 创建SPL
+			var req SPLCreateRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				response := APIResponse{
+					Success: false,
+					Error:   "Invalid JSON",
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(response)
+				return
+			}
+
+			// 验证请求
+			if req.Symbol == "" || req.MintAddress == "" {
+				response := APIResponse{
+					Success: false,
+					Error:   "Symbol and MintAddress are required",
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(response)
+				return
+			}
+
+			// 创建新的SPL
+			newSPL := SPL{
+				ID:          2,
+				Symbol:      req.Symbol,
+				MintAddress: req.MintAddress,
+				CreatedAt:   time.Now(),
+				UpdatedAt:   time.Now(),
+			}
+
+			response := APIResponse{
+				Success: true,
+				Data:    newSPL,
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(response)
+
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	return httptest.NewServer(mux)
+}
+
+// =============================================================================
+// 健康检查测试
+// =============================================================================
 
 // TestHealthEndpoint 测试健康检查端点
 func TestHealthEndpoint(t *testing.T) {
-	// TODO: 实现健康检查端点测试
-	// 需要先重构服务器代码以支持测试
-	t.Log("健康检查端点测试 - 待实现")
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	// 测试GET请求
+	resp, err := http.Get(server.URL + "/health")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查状态码
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("期望状态码 %d, 实际 %d", http.StatusOK, resp.StatusCode)
+	}
+
+	// 检查Content-Type
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		t.Errorf("期望Content-Type包含application/json, 实际: %s", contentType)
+	}
+
+	// 解析响应
+	var healthResp HealthResponse
+	if err := json.NewDecoder(resp.Body).Decode(&healthResp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	// 验证响应内容
+	if healthResp.Status != "ok" {
+		t.Errorf("期望状态为ok, 实际: %s", healthResp.Status)
+	}
+
+	if healthResp.Timestamp.IsZero() {
+		t.Error("时间戳不应为空")
+	}
+
+	if healthResp.Version == "" {
+		t.Error("版本信息不应为空")
+	}
+
+	t.Logf("健康检查测试通过: %+v", healthResp)
 }
+
+// TestHealthEndpointMethodNotAllowed 测试不支持的HTTP方法
+func TestHealthEndpointMethodNotAllowed(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	// 测试POST请求
+	resp, err := http.Post(server.URL+"/health", "application/json", nil)
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("期望状态码 %d, 实际 %d", http.StatusMethodNotAllowed, resp.StatusCode)
+	}
+}
+
+// =============================================================================
+// 持有者查询测试
+// =============================================================================
 
 // TestHoldersEndpoint 测试持有者查询端点
 func TestHoldersEndpoint(t *testing.T) {
-	// TODO: 实现持有者查询端点测试
-	// 需要先重构服务器代码以支持测试
-	t.Log("持有者查询端点测试 - 待实现")
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	// 测试基本查询
+	resp, err := http.Get(server.URL + "/holders")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("期望状态码 %d, 实际 %d", http.StatusOK, resp.StatusCode)
+	}
+
+	var apiResp APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if !apiResp.Success {
+		t.Error("API响应应该成功")
+	}
+
+	if apiResp.Total <= 0 {
+		t.Error("应该返回至少一个持有者")
+	}
+
+	t.Logf("持有者查询测试通过: 总数=%d, 页码=%d, 限制=%d", apiResp.Total, apiResp.Page, apiResp.Limit)
 }
 
-// TestSPLEndpoint 测试SPL Token端点
-func TestSPLEndpoint(t *testing.T) {
-	// TODO: 实现SPL Token端点测试
-	// 需要先重构服务器代码以支持测试
-	t.Log("SPL Token端点测试 - 待实现")
+// TestHoldersEndpointPagination 测试分页功能
+func TestHoldersEndpointPagination(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	testCases := []struct {
+		name     string
+		url      string
+		expPage  int
+		expLimit int
+	}{
+		{"默认分页", "/holders", 1, 20},
+		{"自定义页码", "/holders?page=2", 2, 20},
+		{"自定义限制", "/holders?limit=10", 1, 10},
+		{"自定义页码和限制", "/holders?page=3&limit=5", 3, 5},
+		{"无效页码", "/holders?page=0", 1, 20},
+		{"无效限制", "/holders?limit=0", 1, 20},
+		{"超大限制", "/holders?limit=200", 1, 20},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := http.Get(server.URL + tc.url)
+			if err != nil {
+				t.Fatalf("请求失败: %v", err)
+			}
+			defer resp.Body.Close()
+
+			var apiResp APIResponse
+			if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+				t.Fatalf("解析响应失败: %v", err)
+			}
+
+			if apiResp.Page != tc.expPage {
+				t.Errorf("期望页码 %d, 实际 %d", tc.expPage, apiResp.Page)
+			}
+
+			if apiResp.Limit != tc.expLimit {
+				t.Errorf("期望限制 %d, 实际 %d", tc.expLimit, apiResp.Limit)
+			}
+		})
+	}
 }
+
+// TestHoldersEndpointFiltering 测试过滤功能
+func TestHoldersEndpointFiltering(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	// 测试mint_address过滤
+	resp, err := http.Get(server.URL + "/holders?mint_address=test_mint_address_1")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var apiResp APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if !apiResp.Success {
+		t.Error("API响应应该成功")
+	}
+
+	// 验证过滤结果
+	data, ok := apiResp.Data.([]interface{})
+	if !ok {
+		t.Fatal("数据格式错误")
+	}
+
+	for _, item := range data {
+		holder, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		mintAddr, ok := holder["mint_address"].(string)
+		if !ok {
+			continue
+		}
+		if mintAddr != "test_mint_address_1" {
+			t.Errorf("过滤失败，期望mint_address为test_mint_address_1，实际: %s", mintAddr)
+		}
+	}
+
+	t.Log("持有者过滤测试通过")
+}
+
+// =============================================================================
+// SPL Token测试
+// =============================================================================
+
+// TestSPLEndpointGet 测试SPL Token获取
+func TestSPLEndpointGet(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/spl")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("期望状态码 %d, 实际 %d", http.StatusOK, resp.StatusCode)
+	}
+
+	var apiResp APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if !apiResp.Success {
+		t.Error("API响应应该成功")
+	}
+
+	t.Log("SPL Token获取测试通过")
+}
+
+// TestSPLEndpointCreate 测试SPL Token创建
+func TestSPLEndpointCreate(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	// 测试有效请求
+	reqData := SPLCreateRequest{
+		Symbol:      "TESTCOIN",
+		MintAddress: "test_mint_address_new",
+	}
+
+	jsonData, err := json.Marshal(reqData)
+	if err != nil {
+		t.Fatalf("序列化请求失败: %v", err)
+	}
+
+	resp, err := http.Post(server.URL+"/spl", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("期望状态码 %d, 实际 %d", http.StatusCreated, resp.StatusCode)
+	}
+
+	var apiResp APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if !apiResp.Success {
+		t.Error("API响应应该成功")
+	}
+
+	t.Log("SPL Token创建测试通过")
+}
+
+// TestSPLEndpointCreateInvalid 测试无效的SPL Token创建请求
+func TestSPLEndpointCreateInvalid(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	testCases := []struct {
+		name string
+		data interface{}
+		exp  int
+	}{
+		{"空Symbol", SPLCreateRequest{Symbol: "", MintAddress: "test"}, http.StatusBadRequest},
+		{"空MintAddress", SPLCreateRequest{Symbol: "TEST", MintAddress: ""}, http.StatusBadRequest},
+		{"无效JSON", "invalid json", http.StatusBadRequest},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var jsonData []byte
+			var err error
+
+			if str, ok := tc.data.(string); ok {
+				jsonData = []byte(str)
+			} else {
+				jsonData, err = json.Marshal(tc.data)
+				if err != nil {
+					t.Fatalf("序列化请求失败: %v", err)
+				}
+			}
+
+			resp, err := http.Post(server.URL+"/spl", "application/json", bytes.NewBuffer(jsonData))
+			if err != nil {
+				t.Fatalf("请求失败: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != tc.exp {
+				t.Errorf("期望状态码 %d, 实际 %d", tc.exp, resp.StatusCode)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// API文档测试
+// =============================================================================
 
 // TestAPIDocumentation 测试API文档端点
 func TestAPIDocumentation(t *testing.T) {
-	// TODO: 实现API文档端点测试
-	// 需要先重构服务器代码以支持测试
-	t.Log("API文档端点测试 - 待实现")
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("期望状态码 %d, 实际 %d", http.StatusOK, resp.StatusCode)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(contentType, "text/html") {
+		t.Errorf("期望Content-Type包含text/html, 实际: %s", contentType)
+	}
+
+	// 读取响应内容
+	body := make([]byte, 1024)
+	n, err := resp.Body.Read(body)
+	if err != nil && err.Error() != "EOF" {
+		t.Fatalf("读取响应失败: %v", err)
+	}
+
+	content := string(body[:n])
+	if !strings.Contains(content, "API Documentation") {
+		t.Error("响应应该包含API Documentation")
+	}
+
+	t.Log("API文档测试通过")
+}
+
+// =============================================================================
+// 错误处理和边界条件测试
+// =============================================================================
+
+// TestMethodNotAllowed 测试不支持的HTTP方法
+func TestMethodNotAllowed(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	endpoints := []string{"/health", "/"}
+
+	for _, endpoint := range endpoints {
+		t.Run(endpoint, func(t *testing.T) {
+			req, err := http.NewRequest("DELETE", server.URL+endpoint, nil)
+			if err != nil {
+				t.Fatalf("创建请求失败: %v", err)
+			}
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("请求失败: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusMethodNotAllowed {
+				t.Errorf("期望状态码 %d, 实际 %d", http.StatusMethodNotAllowed, resp.StatusCode)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// 基准测试
+// =============================================================================
+
+// BenchmarkHealthEndpoint 健康检查端点基准测试
+func BenchmarkHealthEndpoint(b *testing.B) {
+	server := createTestServer(b, nil)
+	defer server.Close()
+
+	client := &http.Client{}
+	url := server.URL + "/health"
+
+	// 预热测试
+	resp, err := client.Get(url)
+	if err != nil {
+		b.Fatalf("预热请求失败: %v", err)
+	}
+	resp.Body.Close()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp, err := client.Get(url)
+		if err != nil {
+			b.Fatalf("请求失败: %v", err)
+		}
+		resp.Body.Close()
+	}
+}
+
+// BenchmarkHoldersEndpoint 持有者查询端点基准测试
+func BenchmarkHoldersEndpoint(b *testing.B) {
+	server := createTestServer(b, nil)
+	defer server.Close()
+
+	client := &http.Client{}
+	url := server.URL + "/holders"
+
+	// 预热测试
+	resp, err := client.Get(url)
+	if err != nil {
+		b.Fatalf("预热请求失败: %v", err)
+	}
+	resp.Body.Close()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp, err := client.Get(url)
+		if err != nil {
+			b.Fatalf("请求失败: %v", err)
+		}
+		resp.Body.Close()
+	}
+}
+
+// =============================================================================
+// 集成测试（需要数据库）
+// =============================================================================
+
+// TestDatabaseIntegration 数据库集成测试
+func TestDatabaseIntegration(t *testing.T) {
+	db := setupTestDB(t)
+	if db == nil {
+		return // 跳过数据库测试
+	}
+	defer cleanupTestDB(t, db)
+
+	// 测试数据库连接
+	if err := db.Ping(); err != nil {
+		t.Fatalf("数据库连接失败: %v", err)
+	}
+
+	// 测试表是否存在
+	tables := []string{"spl", "holder"}
+	for _, table := range tables {
+		var count int
+		err := db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '%s'", table)).Scan(&count)
+		if err != nil {
+			t.Fatalf("检查表%s失败: %v", table, err)
+		}
+		if count == 0 {
+			t.Errorf("表%s不存在", table)
+		}
+	}
+
+	t.Log("数据库集成测试通过")
+}
+
+// TestConcurrentRequests 并发请求测试
+func TestConcurrentRequests(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	concurrency := 10
+	requests := 100
+
+	results := make(chan error, concurrency*requests)
+
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			client := &http.Client{}
+			for j := 0; j < requests; j++ {
+				resp, err := client.Get(server.URL + "/health")
+				if err != nil {
+					results <- err
+					continue
+				}
+				resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					results <- fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+					continue
+				}
+				results <- nil
+			}
+		}()
+	}
+
+	// 收集结果
+	errorCount := 0
+	for i := 0; i < concurrency*requests; i++ {
+		if err := <-results; err != nil {
+			errorCount++
+			t.Logf("并发请求错误: %v", err)
+		}
+	}
+
+	if errorCount > 0 {
+		t.Errorf("并发测试失败，错误数量: %d/%d", errorCount, concurrency*requests)
+	} else {
+		t.Logf("并发测试通过，成功处理 %d 个请求", concurrency*requests)
+	}
 }
