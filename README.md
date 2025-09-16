@@ -201,6 +201,9 @@ curl "http://localhost:8090/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUD
 # 排序查询
 curl "http://localhost:8090/holders?sort=-ui_amount"  # 按金额降序
 curl "http://localhost:8090/holders?sort=pubkey"      # 按地址升序
+
+# 黑名单
+https://dev-xstock-mgt.bitdancex.com/api/v1/holders?state=frozen&page=1&limit=10
 ```
 
 #### 3. SPL Token 管理
