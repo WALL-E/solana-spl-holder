@@ -122,7 +122,7 @@ Flags:
   --rpc_url string      Solana RPC 节点地址 (default "https://api.devnet.solana.com")
   --db_conn string      MariaDB 连接字符串 (default "root:123456@tcp(localhost:3306)/solana_spl_holder?charset=utf8mb4&parseTime=True&loc=Local")
   --interval_time int   数据采集间隔时间(秒) (default 300)
-  --listen_port int     HTTP 服务监听端口 (default 8090)
+  --listen_port int     HTTP 服务监听端口 (default 8091)
   -h, --help           显示帮助信息
 ```
 

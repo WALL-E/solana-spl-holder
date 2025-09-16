@@ -5,7 +5,7 @@
 echo "🧪 测试 Holders API 的 state 查询参数功能"
 echo "======================================"
 
-BASE_URL="http://localhost:8090"
+BASE_URL="http://localhost:8091"
 
 # 测试 1: 查询 Frozen 状态的 holders
 echo "\n📋 测试 1: 查询 state=Frozen 的 holders"

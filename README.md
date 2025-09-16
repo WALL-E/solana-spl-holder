@@ -168,39 +168,39 @@ cd setup && go run init_spl_data.go
 
 服务启动后，可以通过以下端点访问：
 
-- **API 文档**: http://localhost:8090/
-- **健康检查**: http://localhost:8090/health
-- **持有者查询**: http://localhost:8090/holders
-- **SPL Token 管理**: http://localhost:8090/spls
+- **API 文档**: http://localhost:8091/
+- **健康检查**: http://localhost:8091/health
+- **持有者查询**: http://localhost:8091/holders
+- **SPL Token 管理**: http://localhost:8091/spls
 
 ### 主要 API 端点
 
 #### 1. 健康检查
 ```bash
-curl http://localhost:8090/health
+curl http://localhost:8091/health
 ```
 
 #### 2. 获取持有者列表
 ```bash
 # 默认列表
-curl "http://localhost:8090/holders"
+curl "http://localhost:8091/holders"
 
 # 分页查询
-curl "http://localhost:8090/holders?page=2&limit=10"
+curl "http://localhost:8091/holders?page=2&limit=10"
 
 # 按 Token 过滤
-curl "http://localhost:8090/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg"
+curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg"
 
 # 按状态过滤
-curl "http://localhost:8090/holders?state=Frozen"     # 查询冻结状态的持有者
-curl "http://localhost:8090/holders?state=Initialized" # 查询已初始化状态的持有者
+curl "http://localhost:8091/holders?state=Frozen"     # 查询冻结状态的持有者
+curl "http://localhost:8091/holders?state=Initialized" # 查询已初始化状态的持有者
 
 # 组合查询
-curl "http://localhost:8090/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=Frozen"
+curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=Frozen"
 
 # 排序查询
-curl "http://localhost:8090/holders?sort=-ui_amount"  # 按金额降序
-curl "http://localhost:8090/holders?sort=pubkey"      # 按地址升序
+curl "http://localhost:8091/holders?sort=-ui_amount"  # 按金额降序
+curl "http://localhost:8091/holders?sort=pubkey"      # 按地址升序
 
 # 黑名单
 https://dev-xstock-mgt.bitdancex.com/api/v1/holders?state=frozen&page=1&limit=10
@@ -210,12 +210,12 @@ https://dev-xstock-mgt.bitdancex.com/api/v1/holders?state=frozen&page=1&limit=10
 
 ##### 3.1 获取所有 SPL Token
 ```bash
-curl "http://localhost:8090/spls"
+curl "http://localhost:8091/spls"
 ```
 
 ##### 3.2 创建新的 SPL Token
 ```bash
-curl -X POST "http://localhost:8090/spls" \
+curl -X POST "http://localhost:8091/spls" \
   -H "Content-Type: application/json" \
   -d '{
     "mint_address": "新的Token地址",
@@ -228,12 +228,12 @@ curl -X POST "http://localhost:8090/spls" \
 
 ##### 3.3 根据 mint_address 获取特定 SPL Token
 ```bash
-curl "http://localhost:8090/spls/{mint_address}"
+curl "http://localhost:8091/spls/{mint_address}"
 ```
 
 ##### 3.4 更新 SPL Token 信息
 ```bash
-curl -X PUT "http://localhost:8090/spls/{mint_address}" \
+curl -X PUT "http://localhost:8091/spls/{mint_address}" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "更新后的Token名称",
@@ -244,7 +244,7 @@ curl -X PUT "http://localhost:8090/spls/{mint_address}" \
 
 ##### 3.5 删除 SPL Token
 ```bash
-curl -X DELETE "http://localhost:8090/spls/{mint_address}"
+curl -X DELETE "http://localhost:8091/spls/{mint_address}"
 ```
 
 ##### 3.6 SPL Token API 响应格式
@@ -303,7 +303,7 @@ curl -X DELETE "http://localhost:8090/spls/{mint_address}"
 
 **请求示例：**
 ```bash
-curl -X PUT "http://localhost:8090/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg/13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf" \
+curl -X PUT "http://localhost:8091/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg/13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf" \
   -H "Content-Type: application/json" \
   -d '{"state": "Frozen"}'
 ```
@@ -434,7 +434,7 @@ Flags:
   --db_conn string      MariaDB 连接字符串
                         (default "root:123456@tcp(localhost:3306)/solana_spl_holder?charset=utf8mb4&parseTime=True&loc=Local")
   --interval_time int   数据采集间隔时间(秒) (default 300)
-  --listen_port int     HTTP 服务监听端口 (default 8090)
+  --listen_port int     HTTP 服务监听端口 (default 8091)
   --rpc_url string      Solana RPC 节点地址 (default "https://api.devnet.solana.com")
   -h, --help           显示帮助信息
 ```
@@ -464,7 +464,7 @@ Flags:
 
 如果您在使用过程中遇到问题，请：
 
-1. 查看 [API 文档](http://localhost:8090/) (服务运行时)
+1. 查看 [API 文档](http://localhost:8091/) (服务运行时)
 2. 查看 [测试文档](test/README.md)
 3. 查看 [设置文档](setup/README.md)
 4. 提交 Issue

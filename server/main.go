@@ -1716,7 +1716,7 @@ func main() {
 	rootCmd.PersistentFlags().String("rpc_url", "https://api.devnet.solana.com", "Solana节点RPC URL")
 	rootCmd.PersistentFlags().String("db_conn", "root:123456@tcp(localhost:3306)/solana_spl_holder?charset=utf8mb4&parseTime=True&loc=Local", "MariaDB连接字符串")
 	rootCmd.PersistentFlags().Int("interval_time", 300, "数据采集间隔时间(秒)")
-	rootCmd.PersistentFlags().Int("listen_port", 8090, "HTTP服务监听端口")
+	rootCmd.PersistentFlags().Int("listen_port", 8091, "HTTP服务监听端口")
 
 	if err := rootCmd.Execute(); err != nil {
 		errorLog.Fatalf("命令执行失败: %v", err)

@@ -6,7 +6,7 @@ echo "=== 测试Holder状态更新接口 ==="
 echo
 
 # 服务器地址
-BASE_URL="http://localhost:8090"
+BASE_URL="http://localhost:8091"
 
 # 使用实际的测试数据
 MINT_ADDRESS="Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg"
