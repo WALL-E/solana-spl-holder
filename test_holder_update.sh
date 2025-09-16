@@ -12,22 +12,22 @@ BASE_URL="http://localhost:8091"
 MINT_ADDRESS="Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg"
 PUBKEY="13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf"
 
-echo "1. 测试有效的state值 - Initialized"
+echo "1. 测试有效的state值 - initialized"
 curl -X PUT "$BASE_URL/holders/$MINT_ADDRESS/$PUBKEY" \
   -H "Content-Type: application/json" \
-  -d '{"state": "Initialized"}' \
+  -d '{"state": "initialized"}' \
   -w "\nHTTP Status: %{http_code}\n\n"
 
-echo "2. 测试有效的state值 - Frozen"
+echo "2. 测试有效的state值 - frozen"
 curl -X PUT "$BASE_URL/holders/$MINT_ADDRESS/$PUBKEY" \
   -H "Content-Type: application/json" \
-  -d '{"state": "Frozen"}' \
+  -d '{"state": "frozen"}' \
   -w "\nHTTP Status: %{http_code}\n\n"
 
-echo "3. 测试有效的state值 - Uninitialized"
+echo "3. 测试有效的state值 - uninitialized"
 curl -X PUT "$BASE_URL/holders/$MINT_ADDRESS/$PUBKEY" \
   -H "Content-Type: application/json" \
-  -d '{"state": "Uninitialized"}' \
+  -d '{"state": "uninitialized"}' \
   -w "\nHTTP Status: %{http_code}\n\n"
 
 echo "4. 测试无效的state值"
@@ -53,7 +53,7 @@ NON_EXISTENT_MINT="11111111111111111111111111111111"
 NON_EXISTENT_PUBKEY="22222222222222222222222222222222"
 curl -X PUT "$BASE_URL/holders/$NON_EXISTENT_MINT/$NON_EXISTENT_PUBKEY" \
   -H "Content-Type: application/json" \
-  -d '{"state": "Initialized"}' \
+  -d '{"state": "initialized"}' \
   -w "\nHTTP Status: %{http_code}\n\n"
 
 echo "8. 测试不支持的HTTP方法"

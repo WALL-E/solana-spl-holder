@@ -192,11 +192,11 @@ curl "http://localhost:8091/holders?page=2&limit=10"
 curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg"
 
 # 按状态过滤
-curl "http://localhost:8091/holders?state=Frozen"     # 查询冻结状态的持有者
-curl "http://localhost:8091/holders?state=Initialized" # 查询已初始化状态的持有者
+curl "http://localhost:8091/holders?state=frozen"     # 查询冻结状态的持有者
+curl "http://localhost:8091/holders?state=initialized" # 查询已初始化状态的持有者
 
 # 组合查询
-curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=Frozen"
+curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=frozen"
 
 # 排序查询
 curl "http://localhost:8091/holders?sort=-ui_amount"  # 按金额降序
@@ -292,20 +292,20 @@ curl -X DELETE "http://localhost:8091/spls/{mint_address}"
 **请求体：**
 ```json
 {
-  "state": "Frozen"
+  "state": "frozen"
 }
 ```
 
 **支持的状态值：**
-- `Uninitialized`: 未初始化
-- `Initialized`: 已初始化
-- `Frozen`: 已冻结
+- `uninitialized`: 未初始化
+- `initialized`: 已初始化
+- `frozen`: 已冻结
 
 **请求示例：**
 ```bash
 curl -X PUT "http://localhost:8091/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg/13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf" \
   -H "Content-Type: application/json" \
-  -d '{"state": "Frozen"}'
+  -d '{"state": "frozen"}'
 ```
 
 **成功响应：**
@@ -316,7 +316,7 @@ curl -X PUT "http://localhost:8091/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa
     "id": 22,
     "mint_address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
     "pubkey": "13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf",
-    "state": "Frozen",
+    "state": "frozen",
     "owner": "6Vmny6y3mLA4kaDTjnZJabvZ8jLKQBg4aqbaERHmEeLZ",
     "amount": "200121791",
     "uiAmount": 2.001218,
@@ -330,7 +330,7 @@ curl -X PUT "http://localhost:8091/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa
 ```json
 {
   "success": false,
-  "error": "state必须是以下值之一: [Uninitialized Initialized Frozen]"
+  "error": "state必须是以下值之一: [uninitialized initialized frozen]"
 }
 ```
 
@@ -341,7 +341,7 @@ curl -X PUT "http://localhost:8091/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa
 | `page` | int | 页码 (从1开始) | `page=2` |
 | `limit` | int | 每页数量 (1-100) | `limit=20` |
 | `mint_address` | string | Token 地址过滤 | `mint_address=Xs3e...` |
-| `state` | string | 状态过滤 (Uninitialized/Initialized/Frozen) | `state=Frozen` |
+| `state` | string | 状态过滤 (uninitialized/initialized/frozen) | `state=frozen` |
 | `sort` | string | 排序字段 | `sort=-ui_amount` |
 
 ### 响应格式

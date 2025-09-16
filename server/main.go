@@ -205,7 +205,7 @@ func (req *SPLUpdateRequest) Validate() error {
 
 // 验证Holder更新请求
 func (req *HolderUpdateRequest) Validate() error {
-	validStates := []string{"Uninitialized", "Initialized", "Frozen"}
+	validStates := []string{"uninitialized", "initialized", "frozen"}
 	for _, validState := range validStates {
 		if req.State == validState {
 			return nil
@@ -1601,16 +1601,16 @@ func getAPIDocumentation() string {
             <tr><td>limit</td><td>int</td><td>每页数量（默认10，最大1000）</td></tr>
             <tr><td>owner</td><td>string</td><td>按持有者地址筛选</td></tr>
             <tr><td>mint_address</td><td>string</td><td>按 mint 地址筛选</td></tr>
-            <tr><td>state</td><td>string</td><td>按状态筛选（Uninitialized/Initialized/Frozen）</td></tr>
+            <tr><td>state</td><td>string</td><td>按状态筛选（uninitialized/initialized/frozen）</td></tr>
             <tr><td>sort</td><td>string</td><td>排序字段（加 - 前缀为降序）</td></tr>
         </table>
         <p><strong>示例:</strong></p>
         <ul>
             <li>基本查询: <code>/holders?page=1&limit=10</code></li>
-            <li>按状态过滤: <code>/holders?state=Frozen</code></li>
+            <li>按状态过滤: <code>/holders?state=frozen</code></li>
             <li>按Token过滤: <code>/holders?mint_address=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</code></li>
-            <li>组合查询: <code>/holders?page=1&limit=10&mint_address=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&state=Frozen</code></li>
-            <li>多状态查询: <code>/holders?state=Initialized&sort=-amount</code></li>
+            <li>组合查询: <code>/holders?page=1&limit=10&mint_address=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&state=frozen</code></li>
+            <li>多状态查询: <code>/holders?state=initialized&sort=-amount</code></li>
         </ul>
     </div>
     
@@ -1625,13 +1625,13 @@ func getAPIDocumentation() string {
         </table>
         <p><strong>请求体:</strong></p>
         <div class="code">{
-    "state": "Initialized"
+    "state": "initialized"
 }</div>
         <p><strong>支持的状态值:</strong></p>
         <ul>
-            <li><code>Uninitialized</code> - 未初始化</li>
-            <li><code>Initialized</code> - 已初始化</li>
-            <li><code>Frozen</code> - 已冻结</li>
+            <li><code>uninitialized</code> - 未初始化</li>
+<li><code>initialized</code> - 已初始化</li>
+<li><code>frozen</code> - 已冻结</li>
         </ul>
         <p><strong>示例:</strong> <code>/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg/13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf</code></p>
         <p><strong>成功响应示例:</strong></p>
@@ -1641,7 +1641,7 @@ func getAPIDocumentation() string {
         "id": 1,
         "mint_address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
         "pubkey": "13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf",
-        "state": "Initialized",
+        "state": "initialized",
         "owner": "13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf",
         "amount": "1000000",
         "uiAmount": 1.0,
@@ -1652,7 +1652,7 @@ func getAPIDocumentation() string {
         <p><strong>错误响应示例:</strong></p>
         <div class="response">{
     "success": false,
-    "error": "state 必须是 Uninitialized、Initialized、Frozen 之一"
+    "error": "state 必须是 uninitialized、initialized、frozen 之一"
 }</div>
     </div>
 
