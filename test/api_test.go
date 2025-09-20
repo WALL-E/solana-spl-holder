@@ -219,16 +219,6 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 			},
 		}
 
-		// 应用过滤 - 首先过滤amount > 0的记录
-		filtered := []Holder{}
-		for _, h := range holders {
-			// 将amount字符串转换为数字进行比较
-			if amount, err := strconv.ParseFloat(h.Amount, 64); err == nil && amount > 0 {
-				filtered = append(filtered, h)
-			}
-		}
-		holders = filtered
-
 		// 应用mint_address过滤
 		if mintAddress != "" {
 			filtered := []Holder{}
@@ -637,7 +627,7 @@ func TestHoldersEndpointAmountFiltering(t *testing.T) {
 	server := createTestServer(t, nil)
 	defer server.Close()
 
-	// 测试基本查询，应该只返回amount > 0的记录
+	// 测试基本查询，现在应该返回所有记录（包括amount为0的）
 	resp, err := http.Get(server.URL + "/holders")
 	if err != nil {
 		t.Fatalf("请求失败: %v", err)
@@ -657,16 +647,19 @@ func TestHoldersEndpointAmountFiltering(t *testing.T) {
 		t.Error("API响应应该成功")
 	}
 
-	// 验证只返回amount > 0的记录（应该只有1个，因为我们有2个测试数据，其中1个amount为0）
-	if apiResp.Total != 1 {
-		t.Errorf("期望只返回1个amount > 0的记录，实际 %d", apiResp.Total)
+	// 验证返回所有记录（应该有2个，包括amount为0的记录）
+	if apiResp.Total != 2 {
+		t.Errorf("期望返回2个记录（包括amount为0的），实际 %d", apiResp.Total)
 	}
 
-	// 验证返回的数据中所有记录的amount都大于0
+	// 验证返回的数据包含amount为0和大于0的记录
 	data, ok := apiResp.Data.([]interface{})
 	if !ok {
 		t.Fatal("响应数据格式错误")
 	}
+
+	hasZeroAmount := false
+	hasPositiveAmount := false
 
 	for _, item := range data {
 		holder, ok := item.(map[string]interface{})
@@ -681,12 +674,21 @@ func TestHoldersEndpointAmountFiltering(t *testing.T) {
 		if err != nil {
 			t.Fatalf("amount转换失败: %v", err)
 		}
-		if amountFloat <= 0 {
-			t.Errorf("发现amount <= 0的记录: %f", amountFloat)
+		if amountFloat == 0 {
+			hasZeroAmount = true
+		} else if amountFloat > 0 {
+			hasPositiveAmount = true
 		}
 	}
 
-	t.Logf("amount过滤测试通过，成功过滤掉amount为0的记录")
+	if !hasZeroAmount {
+		t.Error("应该包含amount为0的记录")
+	}
+	if !hasPositiveAmount {
+		t.Error("应该包含amount大于0的记录")
+	}
+
+	t.Logf("holders查询测试通过，成功返回所有记录（包括amount为0的记录）")
 }
 
 // =============================================================================

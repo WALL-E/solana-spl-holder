@@ -1116,8 +1116,6 @@ func apiHandlerMariaDB(db *sql.DB) http.HandlerFunc {
 		baseQuery := "SELECT id, mint_address, pubkey, lamports, is_native, owner, state, decimals, amount, ui_amount, ui_amount_string, created_at, updated_at FROM holder"
 		var args []interface{}
 		var conds []string
-		// 添加amount > 0的过滤条件
-		conds = append(conds, "amount > 0")
 		if owner := query.Get("owner"); owner != "" {
 			conds = append(conds, "owner = ?")
 			args = append(args, owner)
