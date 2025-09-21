@@ -10,7 +10,7 @@
 
 - 🔄 **实时数据采集**: 定时从 Solana 区块链获取 SPL Token 持有者信息
 - 🚀 **高性能 API**: 提供 RESTful API 进行数据查询和分析
-- 📊 **多维度查询**: 支持分页、排序、过滤等多种查询方式
+- 📊 **多维度查询**: 支持分页、多字段排序、状态过滤、地址过滤等多种查询方式
 - 🪙 **SPL Token 管理**: 完整的 CRUD API 支持 SPL Token 配置管理
 - 🗄️ **持久化存储**: 使用 MariaDB 进行数据持久化存储
 - 🌐 **多网络支持**: 支持 Devnet、Localnet 和 Mainnet
@@ -25,7 +25,6 @@ solana-spl-holder/
 │   └── main.go            # 主程序入口
 ├── setup/                 # 数据库和初始化脚本
 │   ├── init_database.sql  # 数据库初始化脚本
-│   ├── init_spl_data.go   # SPL 数据初始化
 │   └── README.md          # 设置说明文档
 ├── test/                  # 测试文件
 │   ├── api_test.go        # API 测试
@@ -142,7 +141,7 @@ CHARACTER SET utf8mb4
 COLLATE utf8mb4_general_ci;
 ```
 
-### 自动初始化
+### 数据库初始化
 
 使用提供的初始化脚本：
 
@@ -153,8 +152,7 @@ make init-db
 或手动执行：
 
 ```bash
-mysql -u root -p solana_spl_holder < setup/init_database.sql
-cd setup && go run init_spl_data.go
+mysql -u root -p < setup/init_database.sql
 ```
 
 ### 数据库表结构
@@ -195,15 +193,16 @@ curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUD
 curl "http://localhost:8091/holders?state=frozen"     # 查询冻结状态的持有者
 curl "http://localhost:8091/holders?state=initialized" # 查询已初始化状态的持有者
 
-# 组合查询
-curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=frozen"
-
 # 排序查询
-curl "http://localhost:8091/holders?sort=-ui_amount"  # 按金额降序
-curl "http://localhost:8091/holders?sort=pubkey"      # 按地址升序
+curl "http://localhost:8091/holders?sort=ui_amount"   # 按金额升序排序
+curl "http://localhost:8091/holders?sort=-ui_amount"  # 按金额降序排序
+curl "http://localhost:8091/holders?sort=pubkey"      # 按公钥升序排序
+curl "http://localhost:8091/holders?sort=-pubkey"     # 按公钥降序排序
 
-# 黑名单
-https://dev-xstock-mgt.bitdancex.com/api/v1/holders?state=frozen&page=1&limit=10
+# 组合查询示例
+curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=frozen"
+curl "http://localhost:8091/holders?state=initialized&sort=-ui_amount"  # 查询已初始化状态并按金额降序
+curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=initialized&sort=ui_amount&page=1&limit=10"
 ```
 
 #### 3. SPL Token 管理
@@ -342,7 +341,28 @@ curl -X PUT "http://localhost:8091/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa
 | `limit` | int | 每页数量 (1-100) | `limit=20` |
 | `mint_address` | string | Token 地址过滤 | `mint_address=Xs3e...` |
 | `state` | string | 状态过滤 (uninitialized/initialized/frozen) | `state=frozen` |
-| `sort` | string | 排序字段 | `sort=-ui_amount` |
+| `sort` | string | 排序字段，支持 ui_amount 和 pubkey，前缀 `-` 表示降序 | `sort=-ui_amount` |
+
+##### 排序参数详细说明
+
+| 排序参数 | 说明 | 示例 |
+|----------|------|------|
+| `sort=ui_amount` | 按持有金额升序排序 | 从小到大排列 |
+| `sort=-ui_amount` | 按持有金额降序排序 | 从大到小排列 |
+| `sort=pubkey` | 按持有者公钥升序排序 | 字母顺序 A-Z |
+| `sort=-pubkey` | 按持有者公钥降序排序 | 字母顺序 Z-A |
+
+##### 过滤参数组合使用
+
+可以同时使用多个过滤参数进行精确查询：
+
+```bash
+# 查询特定 Token 的已初始化持有者，按金额降序排列
+curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=initialized&sort=-ui_amount"
+
+# 查询冻结状态的持有者，按公钥升序排列，分页显示
+curl "http://localhost:8091/holders?state=frozen&sort=pubkey&page=1&limit=10"
+```
 
 ### 响应格式
 

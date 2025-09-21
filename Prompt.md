@@ -160,7 +160,6 @@ solana-spl-holder/
 │   └── main.go              # 主程序文件（所有代码）
 ├── setup/
 │   ├── init_database.sql    # 数据库初始化脚本
-│   ├── init_spl_data.go     # SPL 数据初始化工具
 │   └── README.md            # 设置说明
 ├── test/
 │   ├── api_test.go          # API 测试套件
