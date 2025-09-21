@@ -4,7 +4,13 @@
 APP_NAME = solana-spl-holder
 MAIN_FILE = server/main.go
 BUILD_DIR = build
-LDFLAGS = -ldflags="-s -w"
+
+# 构建信息
+BUILD_TIME = $(shell date -u '+%Y-%m-%d %H:%M:%S UTC')
+GIT_COMMIT = $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+# 链接标志
+LDFLAGS = -ldflags="-s -w -X 'main.BuildTime=$(BUILD_TIME)' -X 'main.GitCommit=$(GIT_COMMIT)'"
 
 # 默认目标
 .PHONY: all
@@ -75,7 +81,8 @@ vet:
 .PHONY: init-db
 init-db:
 	@echo "Initializing database..."
-	cd setup && go run init_spl_data.go
+	@echo "Please run the SQL script manually:"
+	@echo "mysql -u root -p < setup/init_database.sql"
 
 # 清理构建文件
 .PHONY: clean
@@ -110,7 +117,7 @@ help:
 	@echo "  test-coverage- Run tests with coverage"
 	@echo "  fmt          - Format code"
 	@echo "  vet          - Run go vet"
-	@echo "  init-db      - Initialize database with SPL data"
+	@echo "  init-db      - Show database initialization instructions"
 	@echo "  clean        - Clean build files"
 	@echo "  install      - Install to /usr/local/bin"
 	@echo "  uninstall    - Remove from /usr/local/bin"

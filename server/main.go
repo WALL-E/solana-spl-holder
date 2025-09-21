@@ -20,6 +20,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// 构建信息变量（在构建时通过 -ldflags 注入）
+var (
+	BuildTime = "unknown"
+	GitCommit = "unknown"
+)
+
 // 全局日志记录器
 var (
 	logger   = log.New(os.Stdout, "[solana-spl-holder] ", log.LstdFlags|log.Lshortfile)
@@ -152,56 +158,14 @@ type SPL struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// SPLCreateRequest 创建SPL的请求结构
-type SPLCreateRequest struct {
-	Symbol      string `json:"symbol" validate:"required,min=1,max=255"`
-	MintAddress string `json:"mint_address" validate:"required,min=32,max=255"`
-}
 
-// SPLUpdateRequest 更新SPL的请求结构
-type SPLUpdateRequest struct {
-	Symbol      string `json:"symbol" validate:"required,min=1,max=255"`
-	MintAddress string `json:"mint_address" validate:"required,min=32,max=255"`
-}
 
 // HolderUpdateRequest 更新Holder状态的请求结构
 type HolderUpdateRequest struct {
 	State string `json:"state" validate:"required"`
 }
 
-// 验证SPL创建请求
-func (req *SPLCreateRequest) Validate() error {
-	if strings.TrimSpace(req.Symbol) == "" {
-		return fmt.Errorf("symbol不能为空")
-	}
-	if len(req.Symbol) > 255 {
-		return fmt.Errorf("symbol长度不能超过255个字符")
-	}
-	if strings.TrimSpace(req.MintAddress) == "" {
-		return fmt.Errorf("mint_address不能为空")
-	}
-	if len(req.MintAddress) < 32 || len(req.MintAddress) > 255 {
-		return fmt.Errorf("mint_address长度必须在32-255个字符之间")
-	}
-	return nil
-}
 
-// 验证SPL更新请求
-func (req *SPLUpdateRequest) Validate() error {
-	if strings.TrimSpace(req.Symbol) == "" {
-		return fmt.Errorf("symbol不能为空")
-	}
-	if len(req.Symbol) > 255 {
-		return fmt.Errorf("symbol长度不能超过255个字符")
-	}
-	if strings.TrimSpace(req.MintAddress) == "" {
-		return fmt.Errorf("mint_address不能为空")
-	}
-	if len(req.MintAddress) < 32 || len(req.MintAddress) > 255 {
-		return fmt.Errorf("mint_address长度必须在32-255个字符之间")
-	}
-	return nil
-}
 
 // 验证Holder更新请求
 func (req *HolderUpdateRequest) Validate() error {
@@ -303,6 +267,16 @@ func checkTableExists(db *sql.DB, tableName string) (bool, error) {
 	return count > 0, nil
 }
 
+// 检查视图是否存在
+func checkViewExists(db *sql.DB, viewName string) (bool, error) {
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM information_schema.views WHERE table_schema = DATABASE() AND table_name = ?", viewName).Scan(&count)
+	if err != nil {
+		return false, wrapError(fmt.Sprintf("检查视图%s是否存在", viewName), err)
+	}
+	return count > 0, nil
+}
+
 // MariaDB初始化
 func initMariaDB(connStr string) (*sql.DB, error) {
 	if connStr == "" {
@@ -325,71 +299,28 @@ func initMariaDB(connStr string) (*sql.DB, error) {
 	}
 
 	logInfo("数据库连接成功")
-	logInfo("正在检查数据库表结构...")
+
+	// 检查spl视图是否存在
+	splViewExists, err := checkViewExists(db, "spl")
+	if err != nil {
+		return nil, wrapError("检查spl视图是否存在", err)
+	}
+	if !splViewExists {
+		logError("数据库检查失败", fmt.Errorf("spl视图不存在，请先创建spl视图"))
+		os.Exit(1)
+	}
 
 	// 检查holder表是否存在
-	holderExists, err := checkTableExists(db, "holder")
+	holderTableExists, err := checkTableExists(db, "holder")
 	if err != nil {
-		return nil, err
+		return nil, wrapError("检查holder表是否存在", err)
+	}
+	if !holderTableExists {
+		logError("数据库检查失败", fmt.Errorf("holder表不存在，请先创建holder表"))
+		os.Exit(1)
 	}
 
-	if holderExists {
-		logInfo("holder表已存在，跳过创建")
-	} else {
-		logInfo("holder表不存在，正在创建...")
-		createHolderTable := `CREATE TABLE holder (
-			id BIGINT AUTO_INCREMENT PRIMARY KEY,
-			mint_address VARCHAR(255) NOT NULL,
-			pubkey VARCHAR(255) NOT NULL,
-			lamports BIGINT NOT NULL,
-			is_native TINYINT(1) NOT NULL,
-			owner VARCHAR(255) NOT NULL,
-			state VARCHAR(50) NOT NULL,
-			decimals INT NOT NULL,
-			amount DECIMAL(38,0) NOT NULL,
-			ui_amount DECIMAL(38,6) NOT NULL,
-			ui_amount_string VARCHAR(255) NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-			UNIQUE KEY unique_holder_mint_pubkey (mint_address, pubkey),
-			INDEX idx_mint_address (mint_address),
-			INDEX idx_pubkey (pubkey),
-			INDEX idx_owner (owner),
-			INDEX idx_updated_at (updated_at)
-		) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;`
-		_, err = db.Exec(createHolderTable)
-		if err != nil {
-			return nil, wrapError("创建holder表", err)
-		}
-		logInfo("holder表创建成功")
-	}
-
-	// 检查spl表是否存在
-	splExists, err := checkTableExists(db, "spl")
-	if err != nil {
-		return nil, err
-	}
-
-	if splExists {
-		logInfo("spl表已存在，跳过创建")
-	} else {
-		logInfo("spl表不存在，正在创建...")
-		createSplTable := `CREATE TABLE IF NOT EXISTS spl (
-		id INT AUTO_INCREMENT PRIMARY KEY,
-		symbol VARCHAR(255) NOT NULL,
-		mint_address VARCHAR(255) NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-		UNIQUE KEY unique_mint_address (mint_address)
-	) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;`
-		_, err = db.Exec(createSplTable)
-		if err != nil {
-			return nil, wrapError("创建spl表", err)
-		}
-		logInfo("spl表创建成功")
-	}
-
-	logInfo("数据库表结构检查完成")
+	logInfo("数据库表和视图检查完成")
 	return db, nil
 }
 
@@ -410,92 +341,9 @@ func sendJSONResponse(w http.ResponseWriter, statusCode int, response APIRespons
 	json.NewEncoder(w).Encode(response)
 }
 
-// 创建SPL记录
-func createSPL(db *sql.DB, req *SPLCreateRequest) (*SPL, error) {
-	// 验证请求
-	if err := req.Validate(); err != nil {
-		return nil, wrapError("validation failed", err)
-	}
 
-	// 检查mint_address是否已存在
-	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM spl WHERE mint_address = ?", req.MintAddress).Scan(&count)
-	if err != nil {
-		return nil, wrapError("failed to check existing mint_address", err)
-	}
-	if count > 0 {
-		return nil, fmt.Errorf("mint_address已存在: %s", req.MintAddress)
-	}
 
-	// 插入新记录
-	now := time.Now()
-	result, err := db.Exec(
-		"INSERT INTO spl (symbol, mint_address, created_at, updated_at) VALUES (?, ?, ?, ?)",
-		req.Symbol, req.MintAddress, now, now,
-	)
-	if err != nil {
-		return nil, wrapError("failed to insert SPL record", err)
-	}
 
-	// 获取插入的ID
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, wrapError("failed to get last insert ID", err)
-	}
-
-	// 返回创建的记录
-	spl := &SPL{
-		ID:          int(id),
-		Symbol:      req.Symbol,
-		MintAddress: req.MintAddress,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-	}
-
-	logInfo("Created SPL record: ID=%d, Symbol=%s, MintAddress=%s", id, req.Symbol, req.MintAddress)
-	return spl, nil
-}
-
-// 处理创建SPL的HTTP请求
-func handleCreateSPL(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			sendJSONResponse(w, http.StatusMethodNotAllowed, APIResponse{
-				Success: false,
-				Error:   "Method not allowed",
-			})
-			return
-		}
-
-		// 解析请求体
-		var req SPLCreateRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			logError("Failed to decode request body", err)
-			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   "Invalid JSON format",
-			})
-			return
-		}
-
-		// 创建SPL记录
-		spl, err := createSPL(db, &req)
-		if err != nil {
-			logError("Failed to create SPL", err)
-			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   err.Error(),
-			})
-			return
-		}
-
-		// 返回成功响应
-		sendJSONResponse(w, http.StatusCreated, APIResponse{
-			Success: true,
-			Data:    spl,
-		})
-	}
-}
 
 // 获取SPL记录列表（支持分页）
 func getSPLList(db *sql.DB, page, limit int) ([]SPL, int, error) {
@@ -543,23 +391,7 @@ func getSPLList(db *sql.DB, page, limit int) ([]SPL, int, error) {
 	return spls, total, nil
 }
 
-// 根据ID获取SPL记录
-func getSPLByID(db *sql.DB, id int) (*SPL, error) {
-	var spl SPL
-	err := db.QueryRow(
-		"SELECT id, symbol, mint_address, created_at, updated_at FROM spl WHERE id = ?",
-		id,
-	).Scan(&spl.ID, &spl.Symbol, &spl.MintAddress, &spl.CreatedAt, &spl.UpdatedAt)
 
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("SPL记录不存在: ID=%d", id)
-		}
-		return nil, wrapError("failed to get SPL by ID", err)
-	}
-
-	return &spl, nil
-}
 
 // 根据mint_address获取SPL记录
 func getSPLByMintAddress(db *sql.DB, mintAddress string) (*SPL, error) {
@@ -702,219 +534,11 @@ func handleGetSPLByMintAddress(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// 更新SPL记录
-func updateSPL(db *sql.DB, id int, req *SPLUpdateRequest) (*SPL, error) {
-	// 验证请求
-	if err := req.Validate(); err != nil {
-		return nil, wrapError("validation failed", err)
-	}
 
-	// 检查记录是否存在
-	existingSPL, err := getSPLByID(db, id)
-	if err != nil {
-		return nil, err
-	}
 
-	// 检查mint_address是否被其他记录使用
-	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM spl WHERE mint_address = ? AND id != ?", req.MintAddress, id).Scan(&count)
-	if err != nil {
-		return nil, wrapError("failed to check existing mint_address", err)
-	}
-	if count > 0 {
-		return nil, fmt.Errorf("mint_address已被其他记录使用: %s", req.MintAddress)
-	}
 
-	// 更新记录
-	now := time.Now()
-	_, err = db.Exec(
-		"UPDATE spl SET symbol = ?, mint_address = ?, updated_at = ? WHERE id = ?",
-		req.Symbol, req.MintAddress, now, id,
-	)
-	if err != nil {
-		return nil, wrapError("failed to update SPL record", err)
-	}
 
-	// 返回更新后的记录
-	updatedSPL := &SPL{
-		ID:          existingSPL.ID,
-		Symbol:      req.Symbol,
-		MintAddress: req.MintAddress,
-		CreatedAt:   existingSPL.CreatedAt,
-		UpdatedAt:   now,
-	}
 
-	logInfo("Updated SPL record: ID=%d, Symbol=%s, MintAddress=%s", id, req.Symbol, req.MintAddress)
-	return updatedSPL, nil
-}
-
-// 根据mint_address更新SPL记录
-func updateSPLByMintAddress(db *sql.DB, mintAddress string, req *SPLUpdateRequest) (*SPL, error) {
-	// 验证请求
-	if err := req.Validate(); err != nil {
-		return nil, wrapError("validation failed", err)
-	}
-
-	// 检查记录是否存在
-	existingSPL, err := getSPLByMintAddress(db, mintAddress)
-	if err != nil {
-		return nil, err
-	}
-
-	// 检查新的mint_address是否被其他记录使用
-	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM spl WHERE mint_address = ? AND mint_address != ?", req.MintAddress, mintAddress).Scan(&count)
-	if err != nil {
-		return nil, wrapError("failed to check existing mint_address", err)
-	}
-	if count > 0 {
-		return nil, fmt.Errorf("mint_address已被其他记录使用: %s", req.MintAddress)
-	}
-
-	// 更新记录
-	now := time.Now()
-	_, err = db.Exec(
-		"UPDATE spl SET symbol = ?, mint_address = ?, updated_at = ? WHERE mint_address = ?",
-		req.Symbol, req.MintAddress, now, mintAddress,
-	)
-	if err != nil {
-		return nil, wrapError("failed to update SPL record", err)
-	}
-
-	// 返回更新后的记录
-	updatedSPL := &SPL{
-		ID:          existingSPL.ID,
-		Symbol:      req.Symbol,
-		MintAddress: req.MintAddress,
-		CreatedAt:   existingSPL.CreatedAt,
-		UpdatedAt:   now,
-	}
-
-	logInfo("Updated SPL record: MintAddress=%s, Symbol=%s, NewMintAddress=%s", mintAddress, req.Symbol, req.MintAddress)
-	return updatedSPL, nil
-}
-
-// 处理更新SPL的HTTP请求
-func handleUpdateSPL(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut {
-			sendJSONResponse(w, http.StatusMethodNotAllowed, APIResponse{
-				Success: false,
-				Error:   "Method not allowed",
-			})
-			return
-		}
-
-		// 从URL路径中提取mint_address
-		path := r.URL.Path
-		parts := strings.Split(strings.Trim(path, "/"), "/")
-		if len(parts) < 2 {
-			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   "Missing SPL mint_address",
-			})
-			return
-		}
-
-		mintAddress := parts[len(parts)-1]
-		if mintAddress == "" {
-			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   "Invalid SPL mint_address",
-			})
-			return
-		}
-
-		// 解析请求体
-		var req SPLUpdateRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			logError("Failed to decode request body", err)
-			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   "Invalid JSON format",
-			})
-			return
-		}
-
-		// 更新SPL记录
-		spl, err := updateSPLByMintAddress(db, mintAddress, &req)
-		if err != nil {
-			logError("Failed to update SPL", err)
-			if strings.Contains(err.Error(), "不存在") {
-				sendJSONResponse(w, http.StatusNotFound, APIResponse{
-					Success: false,
-					Error:   err.Error(),
-				})
-			} else {
-				sendJSONResponse(w, http.StatusBadRequest, APIResponse{
-					Success: false,
-					Error:   err.Error(),
-				})
-			}
-			return
-		}
-
-		// 返回成功响应
-		sendJSONResponse(w, http.StatusOK, APIResponse{
-			Success: true,
-			Data:    spl,
-		})
-	}
-}
-
-// 删除SPL记录
-func deleteSPL(db *sql.DB, id int) error {
-	// 检查记录是否存在
-	_, err := getSPLByID(db, id)
-	if err != nil {
-		return err
-	}
-
-	// 删除记录
-	result, err := db.Exec("DELETE FROM spl WHERE id = ?", id)
-	if err != nil {
-		return wrapError("failed to delete SPL record", err)
-	}
-
-	// 检查是否真的删除了记录
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return wrapError("failed to get rows affected", err)
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("SPL记录删除失败: ID=%d", id)
-	}
-
-	logInfo("Deleted SPL record: ID=%d", id)
-	return nil
-}
-
-// 根据mint_address删除SPL记录
-func deleteSPLByMintAddress(db *sql.DB, mintAddress string) error {
-	// 检查记录是否存在
-	_, err := getSPLByMintAddress(db, mintAddress)
-	if err != nil {
-		return err
-	}
-
-	// 删除记录
-	result, err := db.Exec("DELETE FROM spl WHERE mint_address = ?", mintAddress)
-	if err != nil {
-		return wrapError("failed to delete SPL record", err)
-	}
-
-	// 检查是否真的删除了记录
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return wrapError("failed to get rows affected", err)
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("SPL记录删除失败: mint_address=%s", mintAddress)
-	}
-
-	logInfo("Deleted SPL record: mint_address=%s", mintAddress)
-	return nil
-}
 
 // 更新Holder状态
 func updateHolderState(db *sql.DB, mintAddress, pubkey, state string) (*Holder, error) {
@@ -1033,62 +657,7 @@ func handleUpdateHolderState(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// 处理删除SPL的HTTP请求
-func handleDeleteSPL(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete {
-			sendJSONResponse(w, http.StatusMethodNotAllowed, APIResponse{
-				Success: false,
-				Error:   "Method not allowed",
-			})
-			return
-		}
 
-		// 从URL路径中提取mint_address
-		path := r.URL.Path
-		parts := strings.Split(strings.Trim(path, "/"), "/")
-		if len(parts) < 2 {
-			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   "Missing SPL mint_address",
-			})
-			return
-		}
-
-		mintAddress := parts[len(parts)-1]
-		if mintAddress == "" {
-			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   "Invalid SPL mint_address",
-			})
-			return
-		}
-
-		// 删除SPL记录
-		err := deleteSPLByMintAddress(db, mintAddress)
-		if err != nil {
-			logError("Failed to delete SPL", err)
-			if strings.Contains(err.Error(), "不存在") {
-				sendJSONResponse(w, http.StatusNotFound, APIResponse{
-					Success: false,
-					Error:   err.Error(),
-				})
-			} else {
-				sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
-					Success: false,
-					Error:   "Failed to delete SPL record",
-				})
-			}
-			return
-		}
-
-		// 返回成功响应
-		sendJSONResponse(w, http.StatusOK, APIResponse{
-			Success: true,
-			Data:    map[string]string{"message": "SPL record deleted successfully"},
-		})
-	}
-}
 
 // MariaDB API处理
 func apiHandlerMariaDB(db *sql.DB) http.HandlerFunc {
@@ -1421,9 +990,7 @@ func getAPIDocumentation() string {
         .endpoint { background: #f4f4f4; padding: 15px; margin: 10px 0; border-radius: 5px; }
         .method { font-weight: bold; color: white; padding: 3px 8px; border-radius: 3px; }
         .get { background: #28a745; }
-        .post { background: #007bff; }
         .put { background: #ffc107; color: black; }
-        .delete { background: #dc3545; }
         .code { background: #f8f9fa; padding: 10px; border-radius: 3px; font-family: monospace; white-space: pre-wrap; }
         .response { background: #e9ecef; padding: 10px; border-radius: 3px; margin-top: 10px; white-space: pre-wrap; font-family: monospace; }
         table { border-collapse: collapse; width: 100%; margin: 10px 0; }
@@ -1446,26 +1013,7 @@ func getAPIDocumentation() string {
     
     <h3>1. SPL Token 管理</h3>
     
-    <div class="endpoint">
-        <h4><span class="method post">POST</span> /spls</h4>
-        <p><strong>描述:</strong> 创建新的 SPL Token 记录</p>
-        <p><strong>请求体:</strong></p>
-        <div class="code">{
-    "symbol": "USDC",
-    "mint_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-}</div>
-        <p><strong>响应示例:</strong></p>
-        <div class="response">{
-    "success": true,
-    "data": {
-        "id": 1,
-        "symbol": "USDC",
-        "mint_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-        "created_at": "2024-01-01T12:00:00Z",
-        "updated_at": "2024-01-01T12:00:00Z"
-    }
-}</div>
-    </div>
+
     
     <div class="endpoint">
         <h4><span class="method get">GET</span> /spls</h4>
@@ -1494,22 +1042,7 @@ func getAPIDocumentation() string {
 }</div>
     </div>
     
-    <div class="endpoint">
-        <h4><span class="method get">GET</span> /spls/{id}</h4>
-        <p><strong>描述:</strong> 根据 ID 获取单个 SPL Token 记录</p>
-        <p><strong>示例:</strong> <code>/spls/1</code></p>
-        <p><strong>响应示例:</strong></p>
-        <div class="response">{
-    "success": true,
-    "data": {
-        "id": 1,
-        "symbol": "USDC",
-        "mint_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-        "created_at": "2024-01-01T12:00:00Z",
-        "updated_at": "2024-01-01T12:00:00Z"
-    }
-}</div>
-    </div>
+
     
     <div class="endpoint">
         <h4><span class="method get">GET</span> /spls/{mint_address}</h4>
@@ -1528,88 +1061,67 @@ func getAPIDocumentation() string {
 }</div>
     </div>
     
-    <div class="endpoint">
-        <h4><span class="method put">PUT</span> /spls/{id}</h4>
-        <p><strong>描述:</strong> 更新指定 ID 的 SPL Token 记录</p>
-        <p><strong>示例:</strong> <code>/spls/1</code></p>
-        <p><strong>请求体:</strong></p>
-        <div class="code">{
-    "symbol": "USDC-Updated",
-    "mint_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-}</div>
-    </div>
+
     
-    <div class="endpoint">
-        <h4><span class="method put">PUT</span> /spls/{mint_address}</h4>
-        <p><strong>描述:</strong> 根据 mint_address 更新 SPL Token 记录</p>
-        <p><strong>示例:</strong> <code>/spls/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</code></p>
-        <p><strong>请求体:</strong></p>
-        <div class="code">{
-    "symbol": "USDC-Updated",
-    "mint_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-}</div>
-        <p><strong>响应示例:</strong></p>
-        <div class="response">{
-    "success": true,
-    "data": {
-        "id": 1,
-        "symbol": "USDC-Updated",
-        "mint_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-        "created_at": "2024-01-01T12:00:00Z",
-        "updated_at": "2024-01-01T12:05:00Z"
-    }
-}</div>
-    </div>
-    
-    <div class="endpoint">
-        <h4><span class="method delete">DELETE</span> /spls/{id}</h4>
-        <p><strong>描述:</strong> 删除指定 ID 的 SPL Token 记录</p>
-        <p><strong>示例:</strong> <code>/spls/1</code></p>
-        <p><strong>响应示例:</strong></p>
-        <div class="response">{
-    "success": true,
-    "data": {
-        "message": "SPL记录删除成功"
-    }
-}</div>
-    </div>
-    
-    <div class="endpoint">
-        <h4><span class="method delete">DELETE</span> /spls/{mint_address}</h4>
-        <p><strong>描述:</strong> 根据 mint_address 删除 SPL Token 记录</p>
-        <p><strong>示例:</strong> <code>/spls/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</code></p>
-        <p><strong>响应示例:</strong></p>
-        <div class="response">{
-    "success": true,
-    "data": {
-        "message": "SPL记录已删除"
-    }
-}</div>
-    </div>
+
     
     <h3>2. Holder 数据查询</h3>
     
     <div class="endpoint">
         <h4><span class="method get">GET</span> /holders</h4>
-        <p><strong>描述:</strong> 查询 Token 持有者信息（支持分页和筛选）</p>
+        <p><strong>描述:</strong> 查询 Token 持有者信息（支持分页、排序和多维度筛选）</p>
         <p><strong>查询参数:</strong></p>
         <table>
-            <tr><th>参数</th><th>类型</th><th>描述</th></tr>
-            <tr><td>page</td><td>int</td><td>页码（默认1）</td></tr>
-            <tr><td>limit</td><td>int</td><td>每页数量（默认10，最大1000）</td></tr>
-            <tr><td>owner</td><td>string</td><td>按持有者地址筛选</td></tr>
-            <tr><td>mint_address</td><td>string</td><td>按 mint 地址筛选</td></tr>
-            <tr><td>state</td><td>string</td><td>按状态筛选（uninitialized/initialized/frozen）</td></tr>
-            <tr><td>sort</td><td>string</td><td>排序字段（加 - 前缀为降序）</td></tr>
+            <tr><th>参数</th><th>类型</th><th>描述</th><th>示例</th></tr>
+            <tr><td>page</td><td>int</td><td>页码（默认1）</td><td>page=2</td></tr>
+            <tr><td>limit</td><td>int</td><td>每页数量（默认10，最大1000）</td><td>limit=50</td></tr>
+            <tr><td>owner</td><td>string</td><td>按持有者地址筛选</td><td>owner=13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf</td></tr>
+            <tr><td>mint_address</td><td>string</td><td>按 mint 地址筛选</td><td>mint_address=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</td></tr>
+            <tr><td>state</td><td>string</td><td>按状态筛选（uninitialized/initialized/frozen）</td><td>state=frozen</td></tr>
+            <tr><td>sort</td><td>string</td><td>排序字段（支持 ui_amount、pubkey、created_at，加 - 前缀为降序）</td><td>sort=-ui_amount</td></tr>
         </table>
-        <p><strong>示例:</strong></p>
+        
+        <p><strong>排序说明:</strong></p>
+        <ul>
+            <li><code>sort=ui_amount</code> - 按金额升序排列</li>
+            <li><code>sort=-ui_amount</code> - 按金额降序排列</li>
+            <li><code>sort=pubkey</code> - 按公钥升序排列</li>
+            <li><code>sort=-pubkey</code> - 按公钥降序排列</li>
+            <li><code>sort=created_at</code> - 按创建时间升序排列</li>
+            <li><code>sort=-created_at</code> - 按创建时间降序排列</li>
+        </ul>
+        
+        <p><strong>查询示例:</strong></p>
         <ul>
             <li>基本查询: <code>/holders?page=1&limit=10</code></li>
             <li>按状态过滤: <code>/holders?state=frozen</code></li>
             <li>按Token过滤: <code>/holders?mint_address=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</code></li>
-            <li>组合查询: <code>/holders?page=1&limit=10&mint_address=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&state=frozen</code></li>
-            <li>多状态查询: <code>/holders?state=initialized&sort=-amount</code></li>
+            <li>金额排序: <code>/holders?sort=-ui_amount&limit=20</code></li>
+            <li>组合查询: <code>/holders?mint_address=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&state=frozen&sort=-ui_amount</code></li>
+            <li>多条件过滤: <code>/holders?state=initialized&sort=pubkey&page=2&limit=25</code></li>
         </ul>
+        
+        <p><strong>响应示例:</strong></p>
+        <div class="response">{
+    "success": true,
+    "data": [
+        {
+            "id": 1,
+            "mint_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "pubkey": "13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf",
+            "state": "initialized",
+            "owner": "13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf",
+            "amount": "1000000",
+            "uiAmount": 1.0,
+            "decimals": 6,
+            "createdAt": "2024-01-01T12:00:00Z",
+            "updatedAt": "2024-01-01T12:00:00Z"
+        }
+    ],
+    "total": 100,
+    "page": 1,
+    "limit": 10
+}</div>
     </div>
     
     <div class="endpoint">
@@ -1682,14 +1194,17 @@ func getAPIDocumentation() string {
     
     <h2>🔧 数据验证</h2>
     <ul>
-        <li><strong>symbol:</strong> 必填，长度 1-255 字符</li>
-        <li><strong>mint_address:</strong> 必填，长度 32-255 字符，必须唯一</li>
+        <li><strong>state:</strong> 必填，必须是 uninitialized、initialized、frozen 之一</li>
     </ul>
     
     <h2>⚡ 特性</h2>
     <ul>
-        <li>✅ 完整的 CRUD 操作</li>
+        <li>✅ SPL Token 查询操作</li>
         <li>✅ 分页支持</li>
+        <li>✅ 多字段排序（金额、公钥、时间）</li>
+        <li>✅ 状态过滤（uninitialized/initialized/frozen）</li>
+        <li>✅ 地址过滤（mint_address、owner）</li>
+        <li>✅ 组合查询（多条件同时使用）</li>
         <li>✅ 数据验证</li>
         <li>✅ 错误处理</li>
         <li>✅ 自动数据采集</li>
@@ -1712,7 +1227,7 @@ func main() {
 	}
 
 	rootCmd.PersistentFlags().String("rpc_url", "https://api.devnet.solana.com", "Solana节点RPC URL")
-	rootCmd.PersistentFlags().String("db_conn", "root:123456@tcp(localhost:3306)/solana_spl_holder?charset=utf8mb4&parseTime=True&loc=Local", "MariaDB连接字符串")
+	rootCmd.PersistentFlags().String("db_conn", "root:123456@tcp(localhost:3306)/rwa?charset=utf8mb4&parseTime=True&loc=Local", "MariaDB连接字符串")
 	rootCmd.PersistentFlags().Int("interval_time", 300, "数据采集间隔时间(秒)")
 	rootCmd.PersistentFlags().Int("listen_port", 8091, "HTTP服务监听端口")
 
@@ -1791,11 +1306,9 @@ func run(cmd *cobra.Command, args []string) {
 		}
 	})
 
-	// SPL CRUD API路由
+	// SPL API路由 (只支持GET方法)
 	mux.HandleFunc("/spls", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
-		case http.MethodPost:
-			handleCreateSPL(db)(w, r)
 		case http.MethodGet:
 			handleGetSPLList(db)(w, r)
 		default:
@@ -1806,15 +1319,11 @@ func run(cmd *cobra.Command, args []string) {
 		}
 	})
 
-	// SPL单个记录操作路由 (支持 /spls/{mint_address})
+	// SPL单个记录查询路由 (支持 /spls/{mint_address}, 只支持GET方法)
 	mux.HandleFunc("/spls/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			handleGetSPLByMintAddress(db)(w, r)
-		case http.MethodPut:
-			handleUpdateSPL(db)(w, r)
-		case http.MethodDelete:
-			handleDeleteSPL(db)(w, r)
 		default:
 			sendJSONResponse(w, http.StatusMethodNotAllowed, APIResponse{
 				Success: false,
@@ -1826,7 +1335,12 @@ func run(cmd *cobra.Command, args []string) {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		sendJSONResponse(w, http.StatusOK, APIResponse{
 			Success: true,
-			Data:    map[string]string{"status": "healthy", "version": "1.0.0"},
+			Data: map[string]string{
+				"status":     "healthy",
+				"version":    "1.0.0",
+				"build_time": BuildTime,
+				"git_commit": GitCommit,
+			},
 		})
 	})
 

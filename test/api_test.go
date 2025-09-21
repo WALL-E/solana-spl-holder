@@ -36,6 +36,8 @@ type HealthResponse struct {
 	Timestamp time.Time `json:"timestamp"`
 	Uptime    string    `json:"uptime"`
 	Version   string    `json:"version"`
+	BuildTime string    `json:"build_time"`
+	GitCommit string    `json:"git_commit"`
 }
 
 // Holder 持有者数据结构
@@ -141,6 +143,8 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 			Timestamp: time.Now(),
 			Uptime:    "0s", // 测试环境
 			Version:   "test",
+			BuildTime: "test-build-time",
+			GitCommit: "test-commit",
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -171,7 +175,8 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 		page := 1
 		limit := 20
 		mintAddress := r.URL.Query().Get("mint_address")
-		// sort := r.URL.Query().Get("sort") // 暂未实现排序功能
+		sort := r.URL.Query().Get("sort")
+		state := r.URL.Query().Get("state")
 
 		if p := r.URL.Query().Get("page"); p != "" {
 			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
@@ -185,7 +190,7 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 			}
 		}
 
-		// 模拟数据
+		// 模拟数据 - 扩展数据以支持排序和状态过滤测试
 		holders := []Holder{
 			{
 				ID:             1,
@@ -209,6 +214,51 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 				Lamports:       2039280,
 				IsNative:       false,
 				Owner:          "test_owner_2",
+				State:          "frozen",
+				Decimals:       6,
+				Amount:         "2000000",
+				UIAmount:       2.0,
+				UIAmountString: "2",
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
+			},
+			{
+				ID:             3,
+				MintAddress:    "test_mint_address_3",
+				Pubkey:         "test_pubkey_3",
+				Lamports:       2039280,
+				IsNative:       false,
+				Owner:          "test_owner_3",
+				State:          "initialized",
+				Decimals:       6,
+				Amount:         "500000",
+				UIAmount:       0.5,
+				UIAmountString: "0.5",
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
+			},
+			{
+				ID:             4,
+				MintAddress:    "test_mint_address_4",
+				Pubkey:         "test_pubkey_4",
+				Lamports:       2039280,
+				IsNative:       false,
+				Owner:          "test_owner_4",
+				State:          "frozen",
+				Decimals:       6,
+				Amount:         "3000000",
+				UIAmount:       3.0,
+				UIAmountString: "3",
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
+			},
+			{
+				ID:             5,
+				MintAddress:    "test_mint_address_5",
+				Pubkey:         "test_pubkey_5",
+				Lamports:       2039280,
+				IsNative:       false,
+				Owner:          "test_owner_5",
 				State:          "initialized",
 				Decimals:       6,
 				Amount:         "0",
@@ -217,6 +267,17 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 				CreatedAt:      time.Now(),
 				UpdatedAt:      time.Now(),
 			},
+		}
+
+		// 应用state过滤
+		if state != "" {
+			filtered := []Holder{}
+			for _, h := range holders {
+				if h.State == state {
+					filtered = append(filtered, h)
+				}
+			}
+			holders = filtered
 		}
 
 		// 应用mint_address过滤
@@ -228,6 +289,49 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 				}
 			}
 			holders = filtered
+		}
+
+		// 应用排序
+		if sort != "" {
+			// 实现排序逻辑
+			switch sort {
+			case "ui_amount":
+				// 升序排序
+				for i := 0; i < len(holders)-1; i++ {
+					for j := i + 1; j < len(holders); j++ {
+						if holders[i].UIAmount > holders[j].UIAmount {
+							holders[i], holders[j] = holders[j], holders[i]
+						}
+					}
+				}
+			case "-ui_amount":
+				// 降序排序
+				for i := 0; i < len(holders)-1; i++ {
+					for j := i + 1; j < len(holders); j++ {
+						if holders[i].UIAmount < holders[j].UIAmount {
+							holders[i], holders[j] = holders[j], holders[i]
+						}
+					}
+				}
+			case "pubkey":
+				// 按pubkey升序排序
+				for i := 0; i < len(holders)-1; i++ {
+					for j := i + 1; j < len(holders); j++ {
+						if holders[i].Pubkey > holders[j].Pubkey {
+							holders[i], holders[j] = holders[j], holders[i]
+						}
+					}
+				}
+			case "-pubkey":
+				// 按pubkey降序排序
+				for i := 0; i < len(holders)-1; i++ {
+					for j := i + 1; j < len(holders); j++ {
+						if holders[i].Pubkey < holders[j].Pubkey {
+							holders[i], holders[j] = holders[j], holders[i]
+						}
+					}
+				}
+			}
 		}
 
 		// 构建响应
@@ -478,6 +582,14 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Error("版本信息不应为空")
 	}
 
+	if healthResp.BuildTime == "" {
+		t.Error("构建时间不应为空")
+	}
+
+	if healthResp.GitCommit == "" {
+		t.Error("Git提交信息不应为空")
+	}
+
 	t.Logf("健康检查测试通过: %+v", healthResp)
 }
 
@@ -527,8 +639,8 @@ func TestHoldersEndpoint(t *testing.T) {
 		t.Error("API响应应该成功")
 	}
 
-	if apiResp.Total <= 0 {
-		t.Error("应该返回至少一个持有者")
+	if apiResp.Total != 5 {
+		t.Errorf("期望返回5个持有者，实际返回%d个", apiResp.Total)
 	}
 
 	t.Logf("持有者查询测试通过: 总数=%d, 页码=%d, 限制=%d", apiResp.Total, apiResp.Page, apiResp.Limit)
@@ -647,9 +759,9 @@ func TestHoldersEndpointAmountFiltering(t *testing.T) {
 		t.Error("API响应应该成功")
 	}
 
-	// 验证返回所有记录（应该有2个，包括amount为0的记录）
-	if apiResp.Total != 2 {
-		t.Errorf("期望返回2个记录（包括amount为0的），实际 %d", apiResp.Total)
+	// 验证返回所有记录（应该有5个，包括amount为0的记录）
+	if apiResp.Total != 5 {
+		t.Errorf("期望返回5个记录，实际 %d", apiResp.Total)
 	}
 
 	// 验证返回的数据包含amount为0和大于0的记录
@@ -1204,4 +1316,317 @@ func TestConcurrentRequests(t *testing.T) {
 	} else {
 		t.Logf("并发测试通过，成功处理 %d 个请求", concurrency*requests)
 	}
+}
+
+// TestHoldersEndpointSorting 测试排序参数 - 升序排序
+func TestHoldersEndpointSorting(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	// 测试按ui_amount升序排序
+	resp, err := http.Get(server.URL + "/holders?sort=ui_amount")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("期望状态码 200，实际得到 %d", resp.StatusCode)
+	}
+
+	var apiResp APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if !apiResp.Success {
+		t.Error("API响应应该成功")
+	}
+
+	// 验证数据按ui_amount升序排列
+	if holders, ok := apiResp.Data.([]interface{}); ok {
+		if len(holders) < 2 {
+			t.Error("应该有至少2个持有者用于排序测试")
+			return
+		}
+
+		// 检查是否按ui_amount升序排列
+		for i := 0; i < len(holders)-1; i++ {
+			current := holders[i].(map[string]interface{})
+			next := holders[i+1].(map[string]interface{})
+			
+			currentAmount := current["uiAmount"].(float64)
+			nextAmount := next["uiAmount"].(float64)
+			
+			if currentAmount > nextAmount {
+				t.Errorf("数据未按ui_amount升序排列: 位置%d的值%f > 位置%d的值%f", 
+					i, currentAmount, i+1, nextAmount)
+			}
+		}
+	} else {
+		t.Error("响应数据格式不正确")
+	}
+}
+
+// TestHoldersEndpointSortingDescending 测试排序参数 - 降序排序
+func TestHoldersEndpointSortingDescending(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	// 测试按ui_amount降序排序
+	resp, err := http.Get(server.URL + "/holders?sort=-ui_amount")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("期望状态码 200，实际得到 %d", resp.StatusCode)
+	}
+
+	var apiResp APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if !apiResp.Success {
+		t.Error("API响应应该成功")
+	}
+
+	// 验证数据按ui_amount降序排列
+	if holders, ok := apiResp.Data.([]interface{}); ok {
+		if len(holders) < 2 {
+			t.Error("应该有至少2个持有者用于排序测试")
+			return
+		}
+
+		// 检查是否按ui_amount降序排列
+		for i := 0; i < len(holders)-1; i++ {
+			current := holders[i].(map[string]interface{})
+			next := holders[i+1].(map[string]interface{})
+			
+			currentAmount := current["uiAmount"].(float64)
+			nextAmount := next["uiAmount"].(float64)
+			
+			if currentAmount < nextAmount {
+				t.Errorf("数据未按ui_amount降序排列: 位置%d的值%f < 位置%d的值%f", 
+					i, currentAmount, i+1, nextAmount)
+			}
+		}
+	} else {
+		t.Error("响应数据格式不正确")
+	}
+}
+
+// TestHoldersEndpointStateFiltering 测试状态过滤参数
+func TestHoldersEndpointStateFiltering(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	// 测试过滤frozen状态的持有者
+	resp, err := http.Get(server.URL + "/holders?state=frozen")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("期望状态码 200，实际得到 %d", resp.StatusCode)
+	}
+
+	var apiResp APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if !apiResp.Success {
+		t.Error("API响应应该成功")
+	}
+
+	// 验证所有返回的持有者状态都是frozen
+	if holders, ok := apiResp.Data.([]interface{}); ok {
+		if len(holders) == 0 {
+			t.Error("应该有frozen状态的持有者")
+			return
+		}
+
+		for i, holder := range holders {
+			holderMap := holder.(map[string]interface{})
+			state := holderMap["state"].(string)
+			if state != "frozen" {
+				t.Errorf("位置%d的持有者状态应该是frozen，实际是%s", i, state)
+			}
+		}
+	} else {
+		t.Error("响应数据格式不正确")
+	}
+
+	// 测试过滤initialized状态的持有者
+	resp2, err := http.Get(server.URL + "/holders?state=initialized")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	var apiResp2 APIResponse
+	if err := json.NewDecoder(resp2.Body).Decode(&apiResp2); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	// 验证所有返回的持有者状态都是initialized
+	if holders, ok := apiResp2.Data.([]interface{}); ok {
+		for i, holder := range holders {
+			holderMap := holder.(map[string]interface{})
+			state := holderMap["state"].(string)
+			if state != "initialized" {
+				t.Errorf("位置%d的持有者状态应该是initialized，实际是%s", i, state)
+			}
+		}
+	}
+}
+
+// TestHoldersEndpointCombinedSortingAndFiltering 测试排序和状态过滤的组合使用
+func TestHoldersEndpointCombinedSortingAndFiltering(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	// 测试组合使用：过滤frozen状态并按ui_amount降序排序
+	resp, err := http.Get(server.URL + "/holders?state=frozen&sort=-ui_amount")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("期望状态码 200，实际得到 %d", resp.StatusCode)
+	}
+
+	var apiResp APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if !apiResp.Success {
+		t.Error("API响应应该成功")
+	}
+
+	// 验证过滤和排序都生效
+	if holders, ok := apiResp.Data.([]interface{}); ok {
+		if len(holders) == 0 {
+			t.Error("应该有frozen状态的持有者")
+			return
+		}
+
+		// 验证状态过滤
+		for i, holder := range holders {
+			holderMap := holder.(map[string]interface{})
+			state := holderMap["state"].(string)
+			if state != "frozen" {
+				t.Errorf("位置%d的持有者状态应该是frozen，实际是%s", i, state)
+			}
+		}
+
+		// 验证降序排序
+		if len(holders) > 1 {
+			for i := 0; i < len(holders)-1; i++ {
+				current := holders[i].(map[string]interface{})
+				next := holders[i+1].(map[string]interface{})
+				
+				currentAmount := current["uiAmount"].(float64)
+				nextAmount := next["uiAmount"].(float64)
+				
+				if currentAmount < nextAmount {
+					t.Errorf("frozen状态的数据未按ui_amount降序排列: 位置%d的值%f < 位置%d的值%f", 
+						i, currentAmount, i+1, nextAmount)
+				}
+			}
+		}
+	} else {
+		t.Error("响应数据格式不正确")
+	}
+}
+
+// TestHoldersEndpointMintAddressAndStateFiltering 测试mint_address和state双重过滤
+func TestHoldersEndpointMintAddressAndStateFiltering(t *testing.T) {
+	server := createTestServer(t, nil)
+	defer server.Close()
+
+	// 测试用例1: 查询特定mint_address且状态为initialized的持有者
+	// 根据模拟数据，test_mint_address_1的状态是initialized，应该返回1个结果
+	resp, err := http.Get(server.URL + "/holders?mint_address=test_mint_address_1&state=initialized")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("期望状态码 %d, 实际 %d", http.StatusOK, resp.StatusCode)
+	}
+
+	var apiResp APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if !apiResp.Success {
+		t.Error("API响应应该成功")
+	}
+
+	// 应该返回1个结果（test_mint_address_1且状态为initialized）
+	if apiResp.Total != 1 {
+		t.Errorf("期望返回1个持有者，实际返回%d个", apiResp.Total)
+	}
+
+	// 验证返回的数据
+	holders, ok := apiResp.Data.([]interface{})
+	if !ok {
+		t.Fatal("响应数据格式错误")
+	}
+
+	if len(holders) != 1 {
+		t.Errorf("期望返回1个持有者数据，实际返回%d个", len(holders))
+	}
+
+	holder := holders[0].(map[string]interface{})
+	if holder["mint_address"] != "test_mint_address_1" {
+		t.Errorf("期望mint_address为test_mint_address_1，实际为%v", holder["mint_address"])
+	}
+	if holder["state"] != "initialized" {
+		t.Errorf("期望state为initialized，实际为%v", holder["state"])
+	}
+
+	// 测试用例2: 查询特定mint_address但状态不匹配的情况
+	// test_mint_address_2的状态是frozen，查询initialized应该返回0个结果
+	resp2, err := http.Get(server.URL + "/holders?mint_address=test_mint_address_2&state=initialized")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	var apiResp2 APIResponse
+	if err := json.NewDecoder(resp2.Body).Decode(&apiResp2); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if apiResp2.Total != 0 {
+		t.Errorf("期望返回0个持有者（mint_address=test_mint_address_2且state=initialized），实际返回%d个", apiResp2.Total)
+	}
+
+	// 测试用例3: 查询不存在的mint_address
+	resp3, err := http.Get(server.URL + "/holders?mint_address=nonexistent_mint&state=initialized")
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	defer resp3.Body.Close()
+
+	var apiResp3 APIResponse
+	if err := json.NewDecoder(resp3.Body).Decode(&apiResp3); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if apiResp3.Total != 0 {
+		t.Errorf("期望返回0个持有者（不存在的mint_address），实际返回%d个", apiResp3.Total)
+	}
+
+	t.Logf("mint_address和state双重过滤测试通过")
 }
