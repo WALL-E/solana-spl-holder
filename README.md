@@ -178,6 +178,20 @@ mysql -u root -p < setup/init_database.sql
 curl http://localhost:8091/health
 ```
 
+**响应示例：**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "version": "1.0.0",
+    "build_time": "2024-01-01 12:00:00 UTC",
+    "git_commit": "abc123",
+    "bin_name": "solana-spl-holder"
+  }
+}
+```
+
 #### 2. 获取持有者列表
 ```bash
 # 默认列表

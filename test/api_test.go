@@ -38,6 +38,7 @@ type HealthResponse struct {
 	Version   string    `json:"version"`
 	BuildTime string    `json:"build_time"`
 	GitCommit string    `json:"git_commit"`
+	BinName   string    `json:"bin_name"`
 }
 
 // Holder 持有者数据结构
@@ -145,6 +146,7 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 			Version:   "test",
 			BuildTime: "test-build-time",
 			GitCommit: "test-commit",
+			BinName:   "solana-spl-holder",
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -588,6 +590,14 @@ func TestHealthEndpoint(t *testing.T) {
 
 	if healthResp.GitCommit == "" {
 		t.Error("Git提交信息不应为空")
+	}
+
+	if healthResp.BinName == "" {
+		t.Error("二进制文件名不应为空")
+	}
+
+	if healthResp.BinName != "solana-spl-holder" {
+		t.Errorf("期望二进制文件名为 solana-spl-holder, 实际: %s", healthResp.BinName)
 	}
 
 	t.Logf("健康检查测试通过: %+v", healthResp)

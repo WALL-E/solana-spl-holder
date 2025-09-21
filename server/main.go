@@ -1158,7 +1158,10 @@ func getAPIDocumentation() string {
     "success": true,
     "data": {
         "status": "healthy",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "build_time": "2024-01-01 12:00:00 UTC",
+        "git_commit": "abc123",
+        "bin_name": "solana-spl-holder"
     }
 }</div>
     </div>
@@ -1322,6 +1325,7 @@ func run(cmd *cobra.Command, args []string) {
 				"version":    "1.0.0",
 				"build_time": BuildTime,
 				"git_commit": GitCommit,
+				"bin_name":   "solana-spl-holder",
 			},
 		})
 	})
