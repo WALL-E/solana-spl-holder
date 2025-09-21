@@ -158,14 +158,10 @@ type SPL struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-
-
 // HolderUpdateRequest 更新Holder状态的请求结构
 type HolderUpdateRequest struct {
 	State string `json:"state" validate:"required"`
 }
-
-
 
 // 验证Holder更新请求
 func (req *HolderUpdateRequest) Validate() error {
@@ -341,10 +337,6 @@ func sendJSONResponse(w http.ResponseWriter, statusCode int, response APIRespons
 	json.NewEncoder(w).Encode(response)
 }
 
-
-
-
-
 // 获取SPL记录列表（支持分页）
 func getSPLList(db *sql.DB, page, limit int) ([]SPL, int, error) {
 	if page < 1 {
@@ -390,8 +382,6 @@ func getSPLList(db *sql.DB, page, limit int) ([]SPL, int, error) {
 
 	return spls, total, nil
 }
-
-
 
 // 根据mint_address获取SPL记录
 func getSPLByMintAddress(db *sql.DB, mintAddress string) (*SPL, error) {
@@ -534,12 +524,6 @@ func handleGetSPLByMintAddress(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-
-
-
-
-
-
 // 更新Holder状态
 func updateHolderState(db *sql.DB, mintAddress, pubkey, state string) (*Holder, error) {
 	// 检查记录是否存在
@@ -656,8 +640,6 @@ func handleUpdateHolderState(db *sql.DB) http.HandlerFunc {
 		})
 	}
 }
-
-
 
 // MariaDB API处理
 func apiHandlerMariaDB(db *sql.DB) http.HandlerFunc {

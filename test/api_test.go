@@ -1354,12 +1354,12 @@ func TestHoldersEndpointSorting(t *testing.T) {
 		for i := 0; i < len(holders)-1; i++ {
 			current := holders[i].(map[string]interface{})
 			next := holders[i+1].(map[string]interface{})
-			
+
 			currentAmount := current["uiAmount"].(float64)
 			nextAmount := next["uiAmount"].(float64)
-			
+
 			if currentAmount > nextAmount {
-				t.Errorf("数据未按ui_amount升序排列: 位置%d的值%f > 位置%d的值%f", 
+				t.Errorf("数据未按ui_amount升序排列: 位置%d的值%f > 位置%d的值%f",
 					i, currentAmount, i+1, nextAmount)
 			}
 		}
@@ -1404,12 +1404,12 @@ func TestHoldersEndpointSortingDescending(t *testing.T) {
 		for i := 0; i < len(holders)-1; i++ {
 			current := holders[i].(map[string]interface{})
 			next := holders[i+1].(map[string]interface{})
-			
+
 			currentAmount := current["uiAmount"].(float64)
 			nextAmount := next["uiAmount"].(float64)
-			
+
 			if currentAmount < nextAmount {
-				t.Errorf("数据未按ui_amount降序排列: 位置%d的值%f < 位置%d的值%f", 
+				t.Errorf("数据未按ui_amount降序排列: 位置%d的值%f < 位置%d的值%f",
 					i, currentAmount, i+1, nextAmount)
 			}
 		}
@@ -1531,12 +1531,12 @@ func TestHoldersEndpointCombinedSortingAndFiltering(t *testing.T) {
 			for i := 0; i < len(holders)-1; i++ {
 				current := holders[i].(map[string]interface{})
 				next := holders[i+1].(map[string]interface{})
-				
+
 				currentAmount := current["uiAmount"].(float64)
 				nextAmount := next["uiAmount"].(float64)
-				
+
 				if currentAmount < nextAmount {
-					t.Errorf("frozen状态的数据未按ui_amount降序排列: 位置%d的值%f < 位置%d的值%f", 
+					t.Errorf("frozen状态的数据未按ui_amount降序排列: 位置%d的值%f < 位置%d的值%f",
 						i, currentAmount, i+1, nextAmount)
 				}
 			}
