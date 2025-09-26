@@ -8,7 +8,6 @@
 API 端点测试文件，包含：
 - 健康检查端点测试
 - 持有者查询端点测试（基础查询、分页、过滤、排序）
-- SPL Token 端点测试（CRUD 操作）
 - API 文档端点测试
 - 并发测试和性能测试
 
@@ -48,8 +47,7 @@ go test -run "TestHoldersEndpoint.*Sort" ./test/
 # 运行过滤功能测试
 go test -run "TestHoldersEndpoint.*Filter" ./test/
 
-# 运行 SPL Token 测试
-go test -run "TestSPLEndpoint.*" ./test/
+
 
 # 运行所有 API 相关测试
 go test -run "Test.*Endpoint" ./test/

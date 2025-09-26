@@ -135,7 +135,7 @@ type TokenAmount struct {
 // Holder 对应数据库中的 'holder' 表结构
 type Holder struct {
 	ID             int64     `json:"id"`
-	MintAddress    string    `json:"mint_address"`
+	Mint           string    `json:"mint"`
 	Pubkey         string    `json:"pubkey"`
 	Lamports       uint64    `json:"lamports"`
 	IsNative       bool      `json:"isNative"`
@@ -149,14 +149,7 @@ type Holder struct {
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
-// SPL 对应数据库中的 'spl' 表结构
-type SPL struct {
-	ID          int       `json:"id"`
-	Symbol      string    `json:"symbol"`
-	MintAddress string    `json:"mint_address"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-}
+
 
 // HolderUpdateRequest 更新Holder状态的请求结构
 type HolderUpdateRequest struct {
@@ -174,11 +167,11 @@ func (req *HolderUpdateRequest) Validate() error {
 	return fmt.Errorf("state必须是以下值之一: %v", validStates)
 }
 
-// 查询spl表所有mint_address
+// 查询spl表所有mint
 func getAllMintAddresses(db *sql.DB) ([]string, error) {
-	rows, err := db.Query("SELECT mint_address FROM spl")
+	rows, err := db.Query("SELECT mint FROM spl")
 	if err != nil {
-		return nil, wrapError("查询mint_address列表", err)
+		return nil, wrapError("查询mint列表", err)
 	}
 	defer rows.Close()
 
@@ -186,7 +179,7 @@ func getAllMintAddresses(db *sql.DB) ([]string, error) {
 	for rows.Next() {
 		var mint string
 		if err := rows.Scan(&mint); err != nil {
-			return nil, wrapError("扫描mint_address", err)
+			return nil, wrapError("扫描mint", err)
 		}
 		result = append(result, mint)
 	}
@@ -211,7 +204,7 @@ func upsertHolderMariaDB(dbOrTx interface{}, mintAddress string, item ResultItem
 
 	info := item.Account.Data.Parsed.Info
 	sqlStr := `INSERT INTO holder (
-		mint_address, pubkey, lamports, is_native, owner, state, decimals, amount, ui_amount, ui_amount_string, created_at, updated_at
+		mint, pubkey, lamports, is_native, owner, state, decimals, amount, ui_amount, ui_amount_string, created_at, updated_at
 	) VALUES (
 		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 	) ON DUPLICATE KEY UPDATE
@@ -337,208 +330,29 @@ func sendJSONResponse(w http.ResponseWriter, statusCode int, response APIRespons
 	json.NewEncoder(w).Encode(response)
 }
 
-// 获取SPL记录列表（支持分页）
-func getSPLList(db *sql.DB, page, limit int) ([]SPL, int, error) {
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 || limit > 1000 {
-		limit = 10
-	}
 
-	// 计算偏移量
-	offset := (page - 1) * limit
 
-	// 获取总数
-	var total int
-	err := db.QueryRow("SELECT COUNT(*) FROM spl").Scan(&total)
-	if err != nil {
-		return nil, 0, wrapError("failed to get total count", err)
-	}
 
-	// 查询数据
-	rows, err := db.Query(
-		"SELECT id, symbol, mint_address, created_at, updated_at FROM spl ORDER BY id DESC LIMIT ? OFFSET ?",
-		limit, offset,
-	)
-	if err != nil {
-		return nil, 0, wrapError("failed to query SPL records", err)
-	}
-	defer rows.Close()
 
-	var spls []SPL
-	for rows.Next() {
-		var spl SPL
-		err := rows.Scan(&spl.ID, &spl.Symbol, &spl.MintAddress, &spl.CreatedAt, &spl.UpdatedAt)
-		if err != nil {
-			return nil, 0, wrapError("failed to scan SPL record", err)
-		}
-		spls = append(spls, spl)
-	}
 
-	if err = rows.Err(); err != nil {
-		return nil, 0, wrapError("error iterating SPL records", err)
-	}
 
-	return spls, total, nil
-}
 
-// 根据mint_address获取SPL记录
-func getSPLByMintAddress(db *sql.DB, mintAddress string) (*SPL, error) {
-	var spl SPL
-	err := db.QueryRow(
-		"SELECT id, symbol, mint_address, created_at, updated_at FROM spl WHERE mint_address = ?",
-		mintAddress,
-	).Scan(&spl.ID, &spl.Symbol, &spl.MintAddress, &spl.CreatedAt, &spl.UpdatedAt)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("SPL记录不存在: mint_address=%s", mintAddress)
-		}
-		return nil, wrapError("failed to get SPL by mint_address", err)
-	}
-
-	return &spl, nil
-}
-
-// 处理获取SPL列表的HTTP请求
-func handleGetSPLList(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			sendJSONResponse(w, http.StatusMethodNotAllowed, APIResponse{
-				Success: false,
-				Error:   "Method not allowed",
-			})
-			return
-		}
-
-		// 解析查询参数
-		pageStr := r.URL.Query().Get("page")
-		limitStr := r.URL.Query().Get("limit")
-
-		page := 1
-		limit := 10
-
-		if pageStr != "" {
-			if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-				page = p
-			}
-		}
-
-		if limitStr != "" {
-			if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 1000 {
-				limit = l
-			}
-		}
-
-		// 获取SPL列表
-		spls, total, err := getSPLList(db, page, limit)
-		if err != nil {
-			logError("Failed to get SPL list", err)
-			sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
-				Success: false,
-				Error:   "Failed to get SPL list",
-			})
-			return
-		}
-
-		// 计算分页信息
-		totalPages := (total + limit - 1) / limit
-		hasNext := page < totalPages
-		hasPrev := page > 1
-
-		// 返回响应
-		response := map[string]interface{}{
-			"data": spls,
-			"pagination": map[string]interface{}{
-				"page":        page,
-				"limit":       limit,
-				"total":       total,
-				"total_pages": totalPages,
-				"has_next":    hasNext,
-				"has_prev":    hasPrev,
-			},
-		}
-
-		sendJSONResponse(w, http.StatusOK, APIResponse{
-			Success: true,
-			Data:    response,
-		})
-	}
-}
-
-// 处理根据mint_address获取SPL的HTTP请求
-func handleGetSPLByMintAddress(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			sendJSONResponse(w, http.StatusMethodNotAllowed, APIResponse{
-				Success: false,
-				Error:   "Method not allowed",
-			})
-			return
-		}
-
-		// 从URL路径中提取mint_address
-		path := r.URL.Path
-		parts := strings.Split(strings.Trim(path, "/"), "/")
-		if len(parts) < 2 {
-			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   "Missing SPL mint_address",
-			})
-			return
-		}
-
-		mintAddress := parts[len(parts)-1]
-		if mintAddress == "" {
-			sendJSONResponse(w, http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   "Invalid SPL mint_address",
-			})
-			return
-		}
-
-		// 获取SPL记录
-		spl, err := getSPLByMintAddress(db, mintAddress)
-		if err != nil {
-			logError("Failed to get SPL by mint_address", err)
-			if strings.Contains(err.Error(), "不存在") {
-				sendJSONResponse(w, http.StatusNotFound, APIResponse{
-					Success: false,
-					Error:   err.Error(),
-				})
-			} else {
-				sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
-					Success: false,
-					Error:   "Failed to get SPL record",
-				})
-			}
-			return
-		}
-
-		// 返回成功响应
-		sendJSONResponse(w, http.StatusOK, APIResponse{
-			Success: true,
-			Data:    spl,
-		})
-	}
-}
 
 // 更新Holder状态
 func updateHolderState(db *sql.DB, mintAddress, pubkey, state string) (*Holder, error) {
 	// 检查记录是否存在
 	var exists bool
-	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM holder WHERE mint_address = ? AND pubkey = ?)", mintAddress, pubkey).Scan(&exists)
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM holder WHERE mint = ? AND pubkey = ?)", mintAddress, pubkey).Scan(&exists)
 	if err != nil {
 		return nil, wrapError("检查Holder记录是否存在", err)
 	}
 
 	if !exists {
-		return nil, fmt.Errorf("mint_address为 %s 且 pubkey为 %s 的Holder记录不存在", mintAddress, pubkey)
+		return nil, fmt.Errorf("mint为 %s 且 pubkey为 %s 的Holder记录不存在", mintAddress, pubkey)
 	}
 
 	// 更新状态
-	_, err = db.Exec("UPDATE holder SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE mint_address = ? AND pubkey = ?", state, mintAddress, pubkey)
+	_, err = db.Exec("UPDATE holder SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE mint = ? AND pubkey = ?", state, mintAddress, pubkey)
 	if err != nil {
 		return nil, wrapError("更新Holder状态", err)
 	}
@@ -546,12 +360,12 @@ func updateHolderState(db *sql.DB, mintAddress, pubkey, state string) (*Holder, 
 	// 查询更新后的记录
 	var holder Holder
 	err = db.QueryRow(`
-		SELECT id, mint_address, pubkey, lamports, is_native, owner, state, decimals, 
+		SELECT id, mint, pubkey, lamports, is_native, owner, state, decimals, 
 		       amount, ui_amount, ui_amount_string, created_at, updated_at 
 		FROM holder 
-		WHERE mint_address = ? AND pubkey = ?
+		WHERE mint = ? AND pubkey = ?
 	`, mintAddress, pubkey).Scan(
-		&holder.ID, &holder.MintAddress, &holder.Pubkey, &holder.Lamports,
+		&holder.ID, &holder.Mint, &holder.Pubkey, &holder.Lamports,
 		&holder.IsNative, &holder.Owner, &holder.State, &holder.Decimals,
 		&holder.Amount, &holder.UIAmount, &holder.UIAmountString,
 		&holder.CreatedAt, &holder.UpdatedAt,
@@ -664,15 +478,15 @@ func apiHandlerMariaDB(db *sql.DB) http.HandlerFunc {
 			limit = 1000 // 限制最大查询数量
 		}
 		offset := (page - 1) * limit
-		baseQuery := "SELECT id, mint_address, pubkey, lamports, is_native, owner, state, decimals, amount, ui_amount, ui_amount_string, created_at, updated_at FROM holder"
+		baseQuery := "SELECT id, mint, pubkey, lamports, is_native, owner, state, decimals, amount, ui_amount, ui_amount_string, created_at, updated_at FROM holder"
 		var args []interface{}
 		var conds []string
 		if owner := query.Get("owner"); owner != "" {
 			conds = append(conds, "owner = ?")
 			args = append(args, owner)
 		}
-		if mint := query.Get("mint_address"); mint != "" {
-			conds = append(conds, "mint_address = ?")
+		if mint := query.Get("mint"); mint != "" {
+			conds = append(conds, "mint = ?")
 			args = append(args, mint)
 		}
 		if state := query.Get("state"); state != "" {
@@ -723,7 +537,7 @@ func apiHandlerMariaDB(db *sql.DB) http.HandlerFunc {
 		var holders []Holder
 		for rows.Next() {
 			var h Holder
-			err := rows.Scan(&h.ID, &h.MintAddress, &h.Pubkey, &h.Lamports, &h.IsNative, &h.Owner, &h.State, &h.Decimals, &h.Amount, &h.UIAmount, &h.UIAmountString, &h.CreatedAt, &h.UpdatedAt)
+			err := rows.Scan(&h.ID, &h.Mint, &h.Pubkey, &h.Lamports, &h.IsNative, &h.Owner, &h.State, &h.Decimals, &h.Amount, &h.UIAmount, &h.UIAmountString, &h.CreatedAt, &h.UpdatedAt)
 			if err != nil {
 				logError("扫描数据行", err)
 				sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
@@ -993,61 +807,7 @@ func getAPIDocumentation() string {
     
     <h2>🔗 API 端点</h2>
     
-    <h3>1. SPL Token 管理</h3>
-    
-
-    
-    <div class="endpoint">
-        <h4><span class="method get">GET</span> /spls</h4>
-        <p><strong>描述:</strong> 获取 SPL Token 列表（支持分页）</p>
-        <p><strong>查询参数:</strong></p>
-        <table>
-            <tr><th>参数</th><th>类型</th><th>默认值</th><th>描述</th></tr>
-            <tr><td>page</td><td>int</td><td>1</td><td>页码</td></tr>
-            <tr><td>limit</td><td>int</td><td>10</td><td>每页数量（最大1000）</td></tr>
-        </table>
-        <p><strong>示例:</strong> <code>/spls?page=1&limit=5</code></p>
-        <p><strong>响应示例:</strong></p>
-        <div class="response">{
-    "success": true,
-    "data": {
-        "data": [...],
-        "pagination": {
-            "page": 1,
-            "limit": 5,
-            "total": 10,
-            "total_pages": 2,
-            "has_next": true,
-            "has_prev": false
-        }
-    }
-}</div>
-    </div>
-    
-
-    
-    <div class="endpoint">
-        <h4><span class="method get">GET</span> /spls/{mint_address}</h4>
-        <p><strong>描述:</strong> 根据 mint_address 获取单个 SPL Token 记录</p>
-        <p><strong>示例:</strong> <code>/spls/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v</code></p>
-        <p><strong>响应示例:</strong></p>
-        <div class="response">{
-    "success": true,
-    "data": {
-        "id": 1,
-        "symbol": "USDC",
-        "mint_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-        "created_at": "2024-01-01T12:00:00Z",
-        "updated_at": "2024-01-01T12:00:00Z"
-    }
-}</div>
-    </div>
-    
-
-    
-
-    
-    <h3>2. Holder 数据查询</h3>
+    <h3>1. Holder 数据查询</h3>
     
     <div class="endpoint">
         <h4><span class="method get">GET</span> /holders</h4>
@@ -1184,7 +944,7 @@ func getAPIDocumentation() string {
     
     <h2>⚡ 特性</h2>
     <ul>
-        <li>✅ SPL Token 查询操作</li>
+
         <li>✅ 分页支持</li>
         <li>✅ 多字段排序（金额、公钥、时间）</li>
         <li>✅ 状态过滤（uninitialized/initialized/frozen）</li>
@@ -1291,31 +1051,7 @@ func run(cmd *cobra.Command, args []string) {
 		}
 	})
 
-	// SPL API路由 (只支持GET方法)
-	mux.HandleFunc("/spls", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			handleGetSPLList(db)(w, r)
-		default:
-			sendJSONResponse(w, http.StatusMethodNotAllowed, APIResponse{
-				Success: false,
-				Error:   "Method not allowed",
-			})
-		}
-	})
 
-	// SPL单个记录查询路由 (支持 /spls/{mint_address}, 只支持GET方法)
-	mux.HandleFunc("/spls/", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			handleGetSPLByMintAddress(db)(w, r)
-		default:
-			sendJSONResponse(w, http.StatusMethodNotAllowed, APIResponse{
-				Success: false,
-				Error:   "Method not allowed",
-			})
-		}
-	})
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		sendJSONResponse(w, http.StatusOK, APIResponse{

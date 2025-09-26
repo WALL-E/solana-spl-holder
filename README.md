@@ -169,7 +169,6 @@ mysql -u root -p < setup/init_database.sql
 - **API 文档**: http://localhost:8091/
 - **健康检查**: http://localhost:8091/health
 - **持有者查询**: http://localhost:8091/holders
-- **SPL Token 管理**: http://localhost:8091/spls
 
 ### 主要 API 端点
 
@@ -201,7 +200,7 @@ curl "http://localhost:8091/holders"
 curl "http://localhost:8091/holders?page=2&limit=10"
 
 # 按 Token 过滤
-curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg"
+curl "http://localhost:8091/holders?mint=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg"
 
 # 按状态过滤
 curl "http://localhost:8091/holders?state=frozen"     # 查询冻结状态的持有者
@@ -214,92 +213,19 @@ curl "http://localhost:8091/holders?sort=pubkey"      # 按公钥升序排序
 curl "http://localhost:8091/holders?sort=-pubkey"     # 按公钥降序排序
 
 # 组合查询示例
-curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=frozen"
+curl "http://localhost:8091/holders?mint=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=frozen"
 curl "http://localhost:8091/holders?state=initialized&sort=-ui_amount"  # 查询已初始化状态并按金额降序
-curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=initialized&sort=ui_amount&page=1&limit=10"
+curl "http://localhost:8091/holders?mint=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=initialized&sort=ui_amount&page=1&limit=10"
 ```
 
-#### 3. SPL Token 管理
+#### 3. Holder 状态更新 API
 
-##### 3.1 获取所有 SPL Token
-```bash
-curl "http://localhost:8091/spls"
-```
-
-##### 3.2 创建新的 SPL Token
-```bash
-curl -X POST "http://localhost:8091/spls" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "mint_address": "新的Token地址",
-    "name": "Token名称",
-    "symbol": "TOKEN",
-    "decimals": 6,
-    "description": "Token描述"
-  }'
-```
-
-##### 3.3 根据 mint_address 获取特定 SPL Token
-```bash
-curl "http://localhost:8091/spls/{mint_address}"
-```
-
-##### 3.4 更新 SPL Token 信息
-```bash
-curl -X PUT "http://localhost:8091/spls/{mint_address}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "更新后的Token名称",
-    "symbol": "NEWTOKEN",
-    "description": "更新后的描述"
-  }'
-```
-
-##### 3.5 删除 SPL Token
-```bash
-curl -X DELETE "http://localhost:8091/spls/{mint_address}"
-```
-
-##### 3.6 SPL Token API 响应格式
-
-**获取所有 SPL Token 响应示例：**
-```json
-[
-  {
-    "id": 1,
-    "mint_address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
-    "name": "Example Token",
-    "symbol": "EXT",
-    "decimals": 6,
-    "description": "这是一个示例Token",
-    "created_at": "2024-01-01T00:00:00Z",
-    "updated_at": "2024-01-01T00:00:00Z"
-  }
-]
-```
-
-**创建/更新 SPL Token 响应示例：**
-```json
-{
-  "id": 1,
-  "mint_address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
-  "name": "Example Token",
-  "symbol": "EXT",
-  "decimals": 6,
-  "description": "这是一个示例Token",
-  "created_at": "2024-01-01T00:00:00Z",
-  "updated_at": "2024-01-01T00:00:00Z"
-}
-```
-
-#### 4. Holder 状态更新 API
-
-**接口：** `PUT /holders/{mint_address}/{pubkey}`
+**接口：** `PUT /holders/{mint}/{pubkey}`
 
 **描述：** 更新指定 Holder 的状态
 
 **路径参数：**
-- `mint_address`: Token 的 mint 地址
+- `mint`: Token 的 mint 地址
 - `pubkey`: Holder 的公钥地址
 
 **请求体：**
@@ -327,7 +253,7 @@ curl -X PUT "http://localhost:8091/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa
   "success": true,
   "data": {
     "id": 22,
-    "mint_address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+    "mint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
     "pubkey": "13nkreFLoEtJ5rRpknHtAUgKH1yo2CychKrtVuBLmwdf",
     "state": "frozen",
     "owner": "6Vmny6y3mLA4kaDTjnZJabvZ8jLKQBg4aqbaERHmEeLZ",
@@ -353,7 +279,7 @@ curl -X PUT "http://localhost:8091/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa
 |------|------|------|------|
 | `page` | int | 页码 (从1开始) | `page=2` |
 | `limit` | int | 每页数量 (1-100) | `limit=20` |
-| `mint_address` | string | Token 地址过滤 | `mint_address=Xs3e...` |
+| `mint` | string | Token 地址过滤 | `mint=Xs3e...` |
 | `state` | string | 状态过滤 (uninitialized/initialized/frozen) | `state=frozen` |
 | `sort` | string | 排序字段，支持 ui_amount 和 pubkey，前缀 `-` 表示降序 | `sort=-ui_amount` |
 
@@ -372,7 +298,7 @@ curl -X PUT "http://localhost:8091/holders/Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa
 
 ```bash
 # 查询特定 Token 的已初始化持有者，按金额降序排列
-curl "http://localhost:8091/holders?mint_address=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=initialized&sort=-ui_amount"
+curl "http://localhost:8091/holders?mint=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg&state=initialized&sort=-ui_amount"
 
 # 查询冻结状态的持有者，按公钥升序排列，分页显示
 curl "http://localhost:8091/holders?state=frozen&sort=pubkey&page=1&limit=10"
@@ -385,7 +311,7 @@ curl "http://localhost:8091/holders?state=frozen&sort=pubkey&page=1&limit=10"
   "data": [
     {
       "id": 1,
-      "mint_address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "mint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
       "pubkey": "holder_address",
       "lamports": 2039280,
       "owner": "owner_address",

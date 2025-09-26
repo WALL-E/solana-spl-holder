@@ -1,7 +1,6 @@
 package test
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -44,7 +43,7 @@ type HealthResponse struct {
 // Holder 持有者数据结构
 type Holder struct {
 	ID             int64     `json:"id"`
-	MintAddress    string    `json:"mint_address"`
+	Mint           string    `json:"mint"`
 	Pubkey         string    `json:"pubkey"`
 	Lamports       uint64    `json:"lamports"`
 	IsNative       bool      `json:"isNative"`
@@ -58,26 +57,7 @@ type Holder struct {
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
-// SPL Token数据结构
-type SPL struct {
-	ID          int       `json:"id"`
-	Symbol      string    `json:"symbol"`
-	MintAddress string    `json:"mint_address"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-}
 
-// SPLCreateRequest SPL创建请求
-type SPLCreateRequest struct {
-	Symbol      string `json:"symbol"`
-	MintAddress string `json:"mint_address"`
-}
-
-// SPLUpdateRequest SPL更新请求
-type SPLUpdateRequest struct {
-	Symbol      string `json:"symbol"`
-	MintAddress string `json:"mint_address"`
-}
 
 // =============================================================================
 // 测试辅助函数
@@ -196,7 +176,7 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 		holders := []Holder{
 			{
 				ID:             1,
-				MintAddress:    "test_mint_address_1",
+				Mint:           "test_mint_address_1",
 				Pubkey:         "test_pubkey_1",
 				Lamports:       2039280,
 				IsNative:       false,
@@ -211,7 +191,7 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 			},
 			{
 				ID:             2,
-				MintAddress:    "test_mint_address_2",
+				Mint:           "test_mint_address_2",
 				Pubkey:         "test_pubkey_2",
 				Lamports:       2039280,
 				IsNative:       false,
@@ -226,7 +206,7 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 			},
 			{
 				ID:             3,
-				MintAddress:    "test_mint_address_3",
+				Mint:           "test_mint_address_3",
 				Pubkey:         "test_pubkey_3",
 				Lamports:       2039280,
 				IsNative:       false,
@@ -241,7 +221,7 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 			},
 			{
 				ID:             4,
-				MintAddress:    "test_mint_address_4",
+				Mint:           "test_mint_address_4",
 				Pubkey:         "test_pubkey_4",
 				Lamports:       2039280,
 				IsNative:       false,
@@ -256,7 +236,7 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 			},
 			{
 				ID:             5,
-				MintAddress:    "test_mint_address_5",
+				Mint:           "test_mint_address_5",
 				Pubkey:         "test_pubkey_5",
 				Lamports:       2039280,
 				IsNative:       false,
@@ -286,7 +266,7 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 		if mintAddress != "" {
 			filtered := []Holder{}
 			for _, h := range holders {
-				if h.MintAddress == mintAddress {
+				if h.Mint == mintAddress {
 					filtered = append(filtered, h)
 				}
 			}
@@ -349,191 +329,7 @@ func createTestServer(t testing.TB, db *sql.DB) *httptest.Server {
 		json.NewEncoder(w).Encode(response)
 	})
 
-	// SPL Token端点 - 精确匹配 /spls
-	mux.HandleFunc("/spls", func(w http.ResponseWriter, r *http.Request) {
-		// 确保是精确匹配，不是子路径
-		if r.URL.Path != "/spls" {
-			http.NotFound(w, r)
-			return
-		}
-		switch r.Method {
-		case http.MethodGet:
-			// 获取SPL列表
-			spls := []SPL{
-				{
-					ID:          1,
-					Symbol:      "TEST",
-					MintAddress: "test_mint_address",
-					CreatedAt:   time.Now(),
-					UpdatedAt:   time.Now(),
-				},
-			}
 
-			response := APIResponse{
-				Success: true,
-				Data:    spls,
-				Total:   len(spls),
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(response)
-
-		case http.MethodPost:
-			// 创建SPL
-			var req SPLCreateRequest
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				response := APIResponse{
-					Success: false,
-					Error:   "Invalid JSON",
-				}
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(response)
-				return
-			}
-
-			// 验证请求
-			if req.Symbol == "" || req.MintAddress == "" {
-				response := APIResponse{
-					Success: false,
-					Error:   "Symbol and MintAddress are required",
-				}
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(response)
-				return
-			}
-
-			// 创建新的SPL
-			newSPL := SPL{
-				ID:          2,
-				Symbol:      req.Symbol,
-				MintAddress: req.MintAddress,
-				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
-			}
-
-			response := APIResponse{
-				Success: true,
-				Data:    newSPL,
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(response)
-
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	// SPL Token单个记录操作端点 - 支持 /spls/{mint_address}
-	mux.HandleFunc("/spls/", func(w http.ResponseWriter, r *http.Request) {
-		// 提取mint_address
-		path := strings.TrimPrefix(r.URL.Path, "/spls/")
-		if path == "" {
-			http.Error(w, "mint_address is required", http.StatusBadRequest)
-			return
-		}
-		mintAddress := path
-
-		switch r.Method {
-		case http.MethodGet:
-			// 根据mint_address获取SPL
-			if strings.HasPrefix(mintAddress, "test_mint_address") && len(mintAddress) >= 32 {
-				symbol := "TEST"
-				if strings.Contains(mintAddress, "get") {
-					symbol = "TESTGET"
-				}
-				spl := SPL{
-					ID:          1,
-					Symbol:      symbol,
-					MintAddress: mintAddress,
-					CreatedAt:   time.Now(),
-					UpdatedAt:   time.Now(),
-				}
-
-				response := APIResponse{
-					Success: true,
-					Data:    spl,
-				}
-
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(response)
-			} else {
-				response := APIResponse{
-					Success: false,
-					Error:   fmt.Sprintf("SPL记录不存在: mint_address=%s", mintAddress),
-				}
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusNotFound)
-				json.NewEncoder(w).Encode(response)
-			}
-
-		case http.MethodPut:
-			// 更新SPL
-			var req SPLUpdateRequest
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				response := APIResponse{
-					Success: false,
-					Error:   "Invalid JSON",
-				}
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(response)
-				return
-			}
-
-			if strings.HasPrefix(mintAddress, "test_mint_address") && len(mintAddress) >= 32 {
-				updatedSPL := SPL{
-					ID:          1,
-					Symbol:      req.Symbol,
-					MintAddress: mintAddress,
-					CreatedAt:   time.Now().Add(-time.Hour),
-					UpdatedAt:   time.Now(),
-				}
-
-				response := APIResponse{
-					Success: true,
-					Data:    updatedSPL,
-				}
-
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(response)
-			} else {
-				response := APIResponse{
-					Success: false,
-					Error:   fmt.Sprintf("SPL记录不存在: mint_address=%s", mintAddress),
-				}
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusNotFound)
-				json.NewEncoder(w).Encode(response)
-			}
-
-		case http.MethodDelete:
-			// 删除SPL
-			if strings.HasPrefix(mintAddress, "test_mint_address") && len(mintAddress) >= 32 {
-				response := APIResponse{
-					Success: true,
-					Data:    map[string]string{"message": "SPL记录已删除"},
-				}
-
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(response)
-			} else {
-				response := APIResponse{
-					Success: false,
-					Error:   fmt.Sprintf("SPL记录不存在: mint_address=%s", mintAddress),
-				}
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusNotFound)
-				json.NewEncoder(w).Encode(response)
-			}
-
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
 
 	return httptest.NewServer(mux)
 }
@@ -813,316 +609,7 @@ func TestHoldersEndpointAmountFiltering(t *testing.T) {
 	t.Logf("holders查询测试通过，成功返回所有记录（包括amount为0的记录）")
 }
 
-// =============================================================================
-// SPL Token测试
-// =============================================================================
 
-// TestSPLEndpointGet 测试SPL Token获取
-func TestSPLEndpointGet(t *testing.T) {
-	server := createTestServer(t, nil)
-	defer server.Close()
-
-	resp, err := http.Get(server.URL + "/spls")
-	if err != nil {
-		t.Fatalf("请求失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("期望状态码 %d, 实际 %d", http.StatusOK, resp.StatusCode)
-	}
-
-	var apiResp APIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		t.Fatalf("解析响应失败: %v", err)
-	}
-
-	if !apiResp.Success {
-		t.Error("API响应应该成功")
-	}
-
-	t.Log("SPL Token获取测试通过")
-}
-
-// TestSPLEndpointCreate 测试SPL Token创建
-func TestSPLEndpointCreate(t *testing.T) {
-	server := createTestServer(t, nil)
-	defer server.Close()
-
-	// 测试有效请求
-	reqData := SPLCreateRequest{
-		Symbol:      "TESTCOIN",
-		MintAddress: "test_mint_address_new",
-	}
-
-	jsonData, err := json.Marshal(reqData)
-	if err != nil {
-		t.Fatalf("序列化请求失败: %v", err)
-	}
-
-	resp, err := http.Post(server.URL+"/spls", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		t.Fatalf("请求失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		t.Errorf("期望状态码 %d, 实际 %d", http.StatusCreated, resp.StatusCode)
-	}
-
-	var apiResp APIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		t.Fatalf("解析响应失败: %v", err)
-	}
-
-	if !apiResp.Success {
-		t.Error("API响应应该成功")
-	}
-
-	t.Log("SPL Token创建测试通过")
-}
-
-// TestSPLEndpointCreateInvalid 测试无效的SPL Token创建请求
-func TestSPLEndpointCreateInvalid(t *testing.T) {
-	server := createTestServer(t, nil)
-	defer server.Close()
-
-	testCases := []struct {
-		name string
-		data interface{}
-		exp  int
-	}{
-		{"空Symbol", SPLCreateRequest{Symbol: "", MintAddress: "test"}, http.StatusBadRequest},
-		{"空MintAddress", SPLCreateRequest{Symbol: "TEST", MintAddress: ""}, http.StatusBadRequest},
-		{"无效JSON", "invalid json", http.StatusBadRequest},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			var jsonData []byte
-			var err error
-
-			if str, ok := tc.data.(string); ok {
-				jsonData = []byte(str)
-			} else {
-				jsonData, err = json.Marshal(tc.data)
-				if err != nil {
-					t.Fatalf("序列化请求失败: %v", err)
-				}
-			}
-
-			resp, err := http.Post(server.URL+"/spls", "application/json", bytes.NewBuffer(jsonData))
-			if err != nil {
-				t.Fatalf("请求失败: %v", err)
-			}
-			defer resp.Body.Close()
-
-			if resp.StatusCode != tc.exp {
-				t.Errorf("期望状态码 %d, 实际 %d", tc.exp, resp.StatusCode)
-			}
-		})
-	}
-}
-
-// TestSPLEndpointGetByMintAddress 测试根据mint_address获取SPL Token
-func TestSPLEndpointGetByMintAddress(t *testing.T) {
-	server := createTestServer(t, nil)
-	defer server.Close()
-
-	// 首先创建一个SPL Token
-	reqData := SPLCreateRequest{
-		Symbol:      "TESTGET",
-		MintAddress: "test_mint_address_get_12345678901234567890123456789012",
-	}
-
-	jsonData, err := json.Marshal(reqData)
-	if err != nil {
-		t.Fatalf("序列化请求失败: %v", err)
-	}
-
-	// 创建SPL Token
-	resp, err := http.Post(server.URL+"/spls", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		t.Fatalf("创建SPL Token失败: %v", err)
-	}
-	resp.Body.Close()
-
-	// 根据mint_address获取SPL Token
-	resp, err = http.Get(server.URL + "/spls/test_mint_address_get_12345678901234567890123456789012")
-	if err != nil {
-		t.Fatalf("请求失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("期望状态码 %d, 实际 %d", http.StatusOK, resp.StatusCode)
-	}
-
-	var apiResp APIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		t.Fatalf("解析响应失败: %v", err)
-	}
-
-	if !apiResp.Success {
-		t.Error("API响应应该成功")
-	}
-
-	// 验证返回的数据
-	if splData, ok := apiResp.Data.(map[string]interface{}); ok {
-		if splData["mint_address"] != "test_mint_address_get_12345678901234567890123456789012" {
-			t.Errorf("期望mint_address为test_mint_address_get_12345678901234567890123456789012, 实际: %v", splData["mint_address"])
-		}
-		if splData["symbol"] != "TESTGET" {
-			t.Errorf("期望symbol为TESTGET, 实际: %v", splData["symbol"])
-		}
-	}
-
-	t.Log("根据mint_address获取SPL Token测试通过")
-}
-
-// TestSPLEndpointUpdateByMintAddress 测试根据mint_address更新SPL Token
-func TestSPLEndpointUpdateByMintAddress(t *testing.T) {
-	server := createTestServer(t, nil)
-	defer server.Close()
-
-	// 首先创建一个SPL Token
-	createData := SPLCreateRequest{
-		Symbol:      "TESTUPDATE",
-		MintAddress: "test_mint_address_update_12345678901234567890123456789012",
-	}
-
-	jsonData, err := json.Marshal(createData)
-	if err != nil {
-		t.Fatalf("序列化创建请求失败: %v", err)
-	}
-
-	// 创建SPL Token
-	resp, err := http.Post(server.URL+"/spls", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		t.Fatalf("创建SPL Token失败: %v", err)
-	}
-	resp.Body.Close()
-
-	// 更新SPL Token
-	updateData := SPLUpdateRequest{
-		Symbol:      "TESTUPDATED",
-		MintAddress: "test_mint_address_updated_12345678901234567890123456789012",
-	}
-
-	updateJsonData, err := json.Marshal(updateData)
-	if err != nil {
-		t.Fatalf("序列化更新请求失败: %v", err)
-	}
-
-	// 发送PUT请求
-	req, err := http.NewRequest("PUT", server.URL+"/spls/test_mint_address_update_12345678901234567890123456789012", bytes.NewBuffer(updateJsonData))
-	if err != nil {
-		t.Fatalf("创建PUT请求失败: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err = client.Do(req)
-	if err != nil {
-		t.Fatalf("PUT请求失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("期望状态码 %d, 实际 %d", http.StatusOK, resp.StatusCode)
-	}
-
-	var apiResp APIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		t.Fatalf("解析响应失败: %v", err)
-	}
-
-	if !apiResp.Success {
-		t.Error("API响应应该成功")
-	}
-
-	// 验证更新后的数据
-	if splData, ok := apiResp.Data.(map[string]interface{}); ok {
-		if splData["mint_address"] != "test_mint_address_update_12345678901234567890123456789012" {
-			t.Errorf("期望mint_address为test_mint_address_update_12345678901234567890123456789012, 实际: %v", splData["mint_address"])
-		}
-		if splData["symbol"] != "TESTUPDATED" {
-			t.Errorf("期望symbol为TESTUPDATED, 实际: %v", splData["symbol"])
-		}
-	}
-
-	t.Log("根据mint_address更新SPL Token测试通过")
-}
-
-// TestSPLEndpointDeleteByMintAddress 测试根据mint_address删除SPL Token
-func TestSPLEndpointDeleteByMintAddress(t *testing.T) {
-	server := createTestServer(t, nil)
-	defer server.Close()
-
-	// 首先创建一个SPL Token
-	createData := SPLCreateRequest{
-		Symbol:      "TESTDELETE",
-		MintAddress: "test_mint_address_delete_12345678901234567890123456789012",
-	}
-
-	jsonData, err := json.Marshal(createData)
-	if err != nil {
-		t.Fatalf("序列化创建请求失败: %v", err)
-	}
-
-	// 创建SPL Token
-	resp, err := http.Post(server.URL+"/spls", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		t.Fatalf("创建SPL Token失败: %v", err)
-	}
-	resp.Body.Close()
-
-	// 删除SPL Token
-	req, err := http.NewRequest("DELETE", server.URL+"/spls/test_mint_address_delete_12345678901234567890123456789012", nil)
-	if err != nil {
-		t.Fatalf("创建DELETE请求失败: %v", err)
-	}
-
-	client := &http.Client{}
-	resp, err = client.Do(req)
-	if err != nil {
-		t.Fatalf("DELETE请求失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("期望状态码 %d, 实际 %d", http.StatusOK, resp.StatusCode)
-	}
-
-	var apiResp APIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		t.Fatalf("解析响应失败: %v", err)
-	}
-
-	if !apiResp.Success {
-		t.Error("API响应应该成功")
-	}
-
-	// 验证删除成功
-	if msgData, ok := apiResp.Data.(map[string]interface{}); ok {
-		if msgData["message"] != "SPL记录已删除" {
-			t.Errorf("期望删除成功消息, 实际: %v", msgData["message"])
-		}
-	}
-
-	// 验证记录已被删除 - 尝试再次获取应该返回404
-	resp, err = http.Get(server.URL + "/spls/test_mint_address_delete")
-	if err != nil {
-		t.Fatalf("验证删除请求失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("期望状态码 %d (记录已删除), 实际 %d", http.StatusNotFound, resp.StatusCode)
-	}
-
-	t.Log("根据mint_address删除SPL Token测试通过")
-}
 
 // =============================================================================
 // API文档测试
@@ -1598,8 +1085,8 @@ func TestHoldersEndpointMintAddressAndStateFiltering(t *testing.T) {
 	}
 
 	holder := holders[0].(map[string]interface{})
-	if holder["mint_address"] != "test_mint_address_1" {
-		t.Errorf("期望mint_address为test_mint_address_1，实际为%v", holder["mint_address"])
+	if holder["mint"] != "test_mint_address_1" {
+		t.Errorf("期望mint为test_mint_address_1，实际为%v", holder["mint"])
 	}
 	if holder["state"] != "initialized" {
 		t.Errorf("期望state为initialized，实际为%v", holder["state"])
